@@ -1,0 +1,14 @@
+{
+  "name": "侍酒師學院 Sommelier Academy",
+  "short_name": "侍酒師學院",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#07080B",
+  "theme_color": "#07080B",
+  "lang": "zh-TW",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
