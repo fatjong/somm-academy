@@ -275,8 +275,10 @@ details[open] summary{margin-bottom:8px}
   <div class="card">
     <p class="eyebrow">上場報到</p>
     <h2>選手資料</h2>
-    <label class="field" for="pname">你的名字（會出現在排行榜上）</label>
-    <input type="text" id="pname" maxlength="14" placeholder="例：陳侍酒" autocomplete="off">
+    <div id="resumebox"></div>
+    <label class="field" for="pname">請輸入學號與姓名，將顯示在排行榜上</label>
+    <input type="text" id="pname" maxlength="20" placeholder="例如：11012345 王小明" autocomplete="off">
+    <p class="muted" style="margin-top:6px;font-size:12.5px">請填寫「學號＋姓名」以利辨識，最多 20 個字。</p>
     <label class="field">計時模式</label>
     <div class="seg" id="modeseg">
       <button data-mode="timed" aria-pressed="true">競賽模式 · 依關卡倒數</button>
@@ -308,7 +310,7 @@ details[open] summary{margin-bottom:8px}
     <div class="row center" style="margin-top:22px">
       <button class="btn" id="btn-start">開始挑戰 10 題</button>
       <button class="btn ghost" id="btn-board">看排行榜</button>
-      <button class="btn ghost" id="btn-teacher">教師版規準</button>
+      <button class="btn ghost" id="btn-teacher">🔒 教師後台</button>
     </div>
   </div>
 
@@ -360,6 +362,19 @@ details[open] summary{margin-bottom:8px}
 
 <!-- ============ TEACHER ============ -->
 <section id="s-teacher" class="screen"><div id="teacherbody"></div></section>
+
+<div class="overlay" id="pwmodal" role="dialog" aria-modal="true">
+  <div class="card">
+    <p class="eyebrow">教師專用</p>
+    <h2>請輸入教師密碼</h2>
+    <p class="muted" id="pwmsg">教師後台包含所有學生的登入時間與分數紀錄。</p>
+    <input type="password" id="pwinput" maxlength="12" placeholder="密碼" autocomplete="off" style="margin-top:12px">
+    <div class="row center" style="margin-top:18px">
+      <button class="btn" id="pw-ok">進入教師後台</button>
+      <button class="btn ghost" id="pw-cancel">取消</button>
+    </div>
+  </div>
+</div>
 
 <div class="overlay" id="exitmodal" role="dialog" aria-modal="true" aria-labelledby="exittitle">
   <div class="card">
@@ -1163,7 +1178,7 @@ const STT={
 /* ==================================================================
    狀態
    ================================================================== */
-const S={name:"",mode:"timed",ai:"on",qi:0,stage:0,
+const S={name:"",sid:"",who:"",mode:"timed",ai:"on",qi:0,stage:0,sessionId:"",loginAt:0,
   scores:[],   // {wine,wineFlavor,dishFlavor,reason,rec}
   picks:{},streak:0,bestStreak:0,bonus:0,startTime:0,elapsed:0,boss:null};
 let timerId=null,timeLeft=0,timeTotal=0;
@@ -1187,15 +1202,48 @@ $('#sndtoggle').onclick=()=>{
   AUDIO.resume();AUDIO.setMode(next);AUDIO.sfx('tap');
   if(next==='full'){const lv=QUESTIONS[S.qi]?QUESTIONS[S.qi].level:1;AUDIO.cur=null;AUDIO.music('l'+lv)}
 };
-$('#btn-start').onclick=()=>{
-  const n=$('#pname').value.trim();
-  if(!n){toast('請先輸入名字，排行榜要用');$('#pname').focus();return}
+function splitWho(raw){                      /* 從「11012345 王小明」拆出學號與姓名 */
+  const s=raw.replace(/\s+/g,' ').trim();
+  const m=s.match(/^([A-Za-z0-9\-]+)\s*(.*)$/);
+  return m&&m[2]?{sid:m[1],name:m[2].trim()}:{sid:'',name:s};
+}
+$('#btn-start').onclick=async()=>{
+  const raw=$('#pname').value.trim();
+  if(!raw){toast('請先輸入學號與姓名');$('#pname').focus();return}
+  const {sid,name}=splitWho(raw);
   AUDIO.resume();AUDIO.sfx('lock');guardOn();
-  S.name=n;S.qi=0;S.scores=[];S.streak=0;S.bestStreak=0;S.bonus=0;S.boss=null;
-  S.startTime=Date.now();show('#s-play');renderQuestion();
+  S.sid=sid;S.name=name;S.who=raw;S.qi=0;S.scores=[];S.streak=0;S.bestStreak=0;S.bonus=0;S.boss=null;
+  S.loginAt=Date.now();S.startTime=Date.now();S.elapsed=0;
+  S.sessionId=raw+'-'+S.loginAt;
+  await autosave(false);
+  show('#s-play');renderQuestion();
 };
 $('#btn-board').onclick=()=>{AUDIO.resume();AUDIO.sfx('click');AUDIO.music('menu');renderBoard(null)};
-$('#btn-teacher').onclick=()=>{AUDIO.resume();AUDIO.sfx('click');AUDIO.music('menu');renderTeacher()};
+const TEACH_PW='620620';
+let teacherOK=false;
+function askPw(){
+  $('#pwmsg').textContent='教師後台包含所有學生的登入時間與分數紀錄。';
+  $('#pwinput').value='';
+  $('#pwmodal').classList.add('on');
+  setTimeout(()=>$('#pwinput').focus(),60);
+}
+function tryPw(){
+  if($('#pwinput').value.trim()===TEACH_PW){
+    teacherOK=true;$('#pwmodal').classList.remove('on');
+    AUDIO.sfx('correct');renderTeacher();
+  }else{
+    AUDIO.sfx('wrong');
+    $('#pwmsg').innerHTML='<b style="color:var(--red)">密碼錯誤，請再試一次。</b>';
+    $('#pwinput').value='';$('#pwinput').focus();
+  }
+}
+$('#pw-ok').onclick=tryPw;
+$('#pw-cancel').onclick=()=>{AUDIO.sfx('tap');$('#pwmodal').classList.remove('on')};
+$('#pwinput').addEventListener('keydown',e=>{if(e.key==='Enter')tryPw()});
+$('#btn-teacher').onclick=()=>{
+  AUDIO.resume();AUDIO.sfx('click');AUDIO.music('menu');
+  if(teacherOK)renderTeacher();else askPw();
+};
 function mark(id){document.querySelectorAll('#bgmseg button[id]').forEach(b=>b.setAttribute('aria-pressed',b.id===id))}
 $('#bgm-track').onclick=()=>{AUDIO.resume();AUDIO.sfx('click');AUDIO.useTrack()};
 $('#bgm-builtin').onclick=()=>{AUDIO.resume();AUDIO.sfx('click');AUDIO.useBuiltIn()};
@@ -1205,13 +1253,25 @@ $('#bgmfile').onchange=e=>{
   toast('已載入 '+f.name);
 };
 $('#bgmvol').oninput=e=>{AUDIO.setCustomVol(e.target.value/100);$('#bgmvolnum').textContent=e.target.value+'%'};
-/* ---------- 防止誤按返回鍵跳出遊戲 ---------- */
+/* ---------- 防止誤按返回鍵跳出遊戲 ----------
+   沙箱／iframe 內 history.pushState 常被擋下，改以 hash 建立歷史紀錄較可靠。 */
+let guardSetAt=0;                      /* 自己改 hash 的時間，用來忽略自己觸發的事件 */
+function pushGuard(){
+  guardSetAt=Date.now();
+  try{
+    if(location.hash!=='#play'){location.hash='play';return}
+    history.pushState({wpc:'play'},'',location.href);
+  }catch(e){}
+}
 function guardOn(){
   if(S.playing)return;
   S.playing=true;
-  try{history.pushState({wpc:'play'},'',location.href)}catch(e){}
+  pushGuard();
 }
-function guardOff(){S.playing=false}
+function guardOff(){
+  S.playing=false;guardSetAt=Date.now();
+  try{if(location.hash==='#play')history.replaceState(null,'',location.pathname+location.search)}catch(e){}
+}
 function openExit(){
   if($('#exitmodal').classList.contains('on'))return;
   pauseTimer();STT.stop();AUDIO.sfx('wrong');
@@ -1223,11 +1283,14 @@ function openExit(){
   $('#exit-stay').focus();
 }
 function closeExit(){$('#exitmodal').classList.remove('on')}
-window.addEventListener('popstate',()=>{
+function onBack(){
   if(!S.playing)return;
-  try{history.pushState({wpc:'play'},'',location.href)}catch(e){}
+  if(Date.now()-guardSetAt<1200)return;   /* 這是我們自己剛設定 hash 造成的，不是使用者按返回 */
+  pushGuard();
   openExit();
-});
+}
+window.addEventListener('popstate',onBack);
+window.addEventListener('hashchange',()=>{if(S.playing&&location.hash!=='#play')onBack()});
 window.addEventListener('beforeunload',e=>{
   if(S.playing){e.preventDefault();e.returnValue=''}
 });
@@ -1236,10 +1299,41 @@ document.addEventListener('keydown',e=>{
 });
 $('#exit-stay').onclick=()=>{AUDIO.sfx('click');closeExit();resumeTimer()};
 $('#exit-go').onclick=()=>{
-  AUDIO.sfx('tap');closeExit();guardOff();
+  AUDIO.sfx('tap');closeExit();guardOff();autosave(false);
   stopTimer();STT.stop();S.paused=false;
   AUDIO.music('menu');show('#s-home');
 };
+
+/* ---------- 續玩：回復上一次未完成的作答 ---------- */
+async function checkResume(){
+  const s=await loadSession();
+  const box=$('#resumebox');if(!box)return;
+  if(!s||s.finished||!s.answered){box.innerHTML='';return}
+  const d=new Date(s.loginAt),hh=String(d.getHours()).padStart(2,'0'),mm=String(d.getMinutes()).padStart(2,'0');
+  box.innerHTML=`<div class="fb" style="margin:0 0 16px">
+    <b style="color:var(--gold)">找到未完成的紀錄</b><br>
+    <span class="muted">${esc(s.who)}　${esc(s.modeName)}　已完成 ${s.answered}/10 題　目前 ${s.total} 分　開始於 ${hh}:${mm}</span>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="rs-go" style="padding:9px 18px;font-size:14px">接著作答第 ${Math.min(10,s.answered+1)} 題</button>
+      <button class="btn ghost" id="rs-del" style="padding:9px 18px;font-size:14px">放棄並重新開始</button>
+    </div></div>`;
+  $('#rs-go').onclick=()=>{AUDIO.sfx('lock');resumeSession(s)};
+  $('#rs-del').onclick=async()=>{AUDIO.sfx('tap');await clearSession();box.innerHTML='';toast('已清除舊紀錄')};
+  $('#pname').value=s.who||((s.sid||'')+(s.name||''));
+}
+function resumeSession(s){
+  S.sid=s.sid;S.name=s.name;S.who=s.who||((s.sid||'')+(s.name||''));S.sessionId=s.id;S.loginAt=s.loginAt;
+  S.mode=s.mode;S.ai=s.ai||'on';
+  S.scores=s.scores||[];S.qi=Math.min(QUESTIONS.length-1,S.scores.length);
+  S.bonus=s.bonus||0;S.bestStreak=s.bestStreak||0;S.streak=0;S.boss=s.boss||0;
+  S.startTime=Date.now()-(s.elapsed||0)*1000;S.elapsed=0;
+  document.querySelectorAll('#modeseg button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.mode===S.mode));
+  document.querySelectorAll('#aiseg button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.ai===S.ai));
+  guardOn();
+  if(S.scores.length>=QUESTIONS.length){S.elapsed=s.elapsed||0;renderResult();return}
+  show('#s-play');renderQuestion();
+  toast('已回復到第 '+(S.qi+1)+' 題');
+}
 
 /* ---------- 開場門簾：瀏覽器只允許在使用者手勢中啟動音訊 ---------- */
 function openGate(withSound){
@@ -1256,8 +1350,8 @@ function openGate(withSound){
     toast('已靜音進入。想開音樂時按右上角的 🔇 或首頁的音樂設定');
   }
   g.classList.add('gone');
-  setTimeout(()=>{g.style.display='none';AUDIO.diag()},600);
-  setTimeout(()=>AUDIO.diag(),1800);
+  setTimeout(()=>{g.style.display='none'},600);
+  checkResume();
 }
 $('#gate-go').onclick=()=>openGate(true);
 /* 保險：若音訊被暫停（切換分頁、系統中斷），下次互動時自動接回 */
@@ -1538,6 +1632,7 @@ async function gradeQuestion(){
     if(S.streak===3)addBonus(3);if(S.streak===5)addBonus(2);if(S.streak===8)addBonus(5);}
   else S.streak=0;
   updateHud();
+  autosave(false);            /* 每題自動存檔 */
   renderVerdict(q,sc,total);
 }
 function addBonus(n){S.bonus=Math.min(10,S.bonus+n);AUDIO.sfx('streak');toast(`🔥 連勝獎勵 +${n} 分`)}
@@ -1598,7 +1693,7 @@ function renderVerdict(q,sc,total){
     <div class="row center" style="margin-top:18px">
       <button class="btn" id="nextbtn">${last?'完成挑戰 · 看成績單 →':'下一題 →'}</button></div></div>`;
   $('#nextbtn').onclick=()=>{
-    if(last){S.elapsed=Math.round((Date.now()-S.startTime)/1000);renderResult()}
+    if(last){S.elapsed=Math.round((Date.now()-S.startTime)/1000);autosave(true);renderResult()}
     else{S.qi++;renderQuestion()}};
 }
 
@@ -1650,7 +1745,7 @@ function renderResult(){
   $('#resultbody').innerHTML=`
   <div class="card">
     <div class="bigscore"><div class="n">${t.total}</div><div class="t">${title}</div>
-      <p class="muted">${S.name}　·　酒款答對 ${t.correct}/10　·　最高 ${S.bestStreak} 連勝　·　連勝獎勵 +${S.bonus}　·　用時 ${mm}:${ss}</p></div>
+      <p class="muted">${esc(S.who||S.name)}　·　酒款答對 ${t.correct}/10　·　最高 ${S.bestStreak} 連勝　·　連勝獎勵 +${S.bonus}　·　用時 ${mm}:${ss}</p></div>
   </div>
   <div class="grid2">
     <div class="card"><p class="eyebrow">個人能力雷達圖</p>${radarSVG(t)}</div>
@@ -1737,6 +1832,7 @@ async function gradeBoss(){
        s.fb2='關鍵字評分：請確認有回應顧客的澀感偏好、果香喜好、預算與生日場合。'}
   const bt=Math.round(s.wine+s.variety+s.flavor+s.reason+s.rec);
   S.boss=bt;
+  autosave(true);
   const t=totals();
   $('#bossbody').innerHTML=`<div class="card" style="border-color:var(--gold)">
     <p class="eyebrow">Boss 結果</p>
@@ -1762,25 +1858,73 @@ async function gradeBoss(){
 }
 
 /* ---------- 排行榜 ---------- */
-const LB_KEY='wpc:leaderboard:v1';
-let memBoard=[];
-async function loadBoard(){
-  try{if(window.storage){const r=await window.storage.get(LB_KEY,true);return r?JSON.parse(r.value):[]}}
-  catch(e){}
-  return memBoard;
+const LB_KEY='wpc:leaderboard:v1';     /* 共用：排行榜 */
+const REC_KEY='wpc:records:v1';        /* 共用：教師後台所有場次紀錄 */
+const SES_KEY='wpc:session:v1';        /* 個人：未完成的作答進度 */
+let memBoard=[],memRecs=[],memSes=null;
+
+/* ---- 共用儲存（教師後台／排行榜） ---- */
+async function readShared(key,fallback){
+  try{if(window.storage){const r=await window.storage.get(key,true);return r?JSON.parse(r.value):[]}}catch(e){}
+  return fallback;
 }
-async function writeBoard(list){
-  memBoard=list;
-  try{if(window.storage){await window.storage.set(LB_KEY,JSON.stringify(list),true)}}catch(e){}
+async function writeShared(key,val){
+  try{if(window.storage){await window.storage.set(key,JSON.stringify(val),true)}}catch(e){}
+}
+async function loadBoard(){return await readShared(LB_KEY,memBoard)}
+async function writeBoard(list){memBoard=list;await writeShared(LB_KEY,list)}
+async function loadRecs(){return await readShared(REC_KEY,memRecs)}
+async function writeRecs(list){memRecs=list;await writeShared(REC_KEY,list)}
+
+/* ---- 個人儲存（自動存檔／續玩） ---- */
+async function saveSession(obj){
+  memSes=obj;
+  try{if(window.storage){await window.storage.set(SES_KEY,JSON.stringify(obj),false)}}catch(e){}
+}
+async function loadSession(){
+  try{if(window.storage){const r=await window.storage.get(SES_KEY,false);return r?JSON.parse(r.value):memSes}}catch(e){}
+  return memSes;
+}
+async function clearSession(){
+  memSes=null;
+  try{if(window.storage){await window.storage.delete(SES_KEY,false)}}catch(e){}
+}
+
+/* ---- 每題自動存檔：同時寫個人進度與教師後台 ---- */
+function modeLabel(m){return m==='relaxed'?'學習模式':'競賽模式'}
+function snapshot(done){
+  const t=totals();
+  return{
+    id:S.sessionId,sid:S.sid,name:S.name,who:S.who||((S.sid||'')+S.name),
+    mode:S.mode,modeName:modeLabel(S.mode),ai:S.ai,
+    loginAt:S.loginAt,lastAt:Date.now(),
+    qi:S.qi,answered:S.scores.length,
+    base:t.base,bonus:S.bonus,total:t.total,boss:S.boss||0,
+    correct:t.correct,wf:t.wf,df:t.df,reason:t.reason,rec:t.rec,
+    bestStreak:S.bestStreak,
+    elapsed:S.elapsed||Math.round((Date.now()-S.startTime)/1000),
+    scores:S.scores,finished:!!done,saved:false
+  };
+}
+async function autosave(done){
+  if(!S.sessionId)return;
+  const snap=snapshot(done);
+  await saveSession(done?null:snap);          /* 完成後不再續玩 */
+  const list=await loadRecs();
+  const i=list.findIndex(x=>x.id===snap.id);
+  if(i>=0){snap.saved=list[i].saved;list[i]=snap}else list.push(snap);
+  if(list.length>400)list.splice(0,list.length-400);
+  await writeRecs(list);
 }
 async function saveScore(t){
-  const rec={name:S.name,total:t.total,boss:S.boss||0,correct:t.correct,
+  const rec={name:S.who||((S.sid||'')+S.name),sid:S.sid,mode:modeLabel(S.mode),
+    total:t.total,boss:S.boss||0,correct:t.correct,
     wf:t.wf,rec:t.rec,reason:t.reason,time:S.elapsed,at:Date.now()};
   const list=await loadBoard();
   const prev=list.findIndex(x=>x.name===rec.name);
   if(prev>=0){if(sortKey(rec)<sortKey(list[prev]))list[prev]=rec}else list.push(rec);
   await writeBoard(list);
-  AUDIO.sfx('streak');guardOff();toast('已存入排行榜');
+  AUDIO.sfx('streak');guardOff();await autosave(true);toast('已存入排行榜');
   renderBoard(rec);
 }
 function sortKey(r){return[-(r.total+r.boss),-r.rec,-r.wf,r.time].join('|')}
@@ -1798,9 +1942,9 @@ async function renderBoard(me){
     <p class="eyebrow">Wine Pairing Leaderboard</p>
     <h2>🏆 排行榜</h2>
     <p class="muted">決勝順位：總分 → 個人化推薦 → 風味分析 → 完成時間。本遊戲的核心不是速度，而是專業侍酒能力。</p>
-    ${list.length?`<table><thead><tr><th>排名</th><th>玩家</th><th style="text-align:right">總分</th><th style="text-align:right">Boss</th><th style="text-align:right">正確率</th><th style="text-align:right">風味</th><th style="text-align:right">個人化</th><th style="text-align:right">時間</th></tr></thead>
+    ${list.length?`<table><thead><tr><th>排名</th><th>學號姓名</th><th>模式</th><th style="text-align:right">總分</th><th style="text-align:right">Boss</th><th style="text-align:right">正確率</th><th style="text-align:right">風味</th><th style="text-align:right">個人化</th><th style="text-align:right">時間</th></tr></thead>
     <tbody>${list.map((r,i)=>`<tr class="${me&&r.name===me.name&&r.at===me.at?'me':''}">
-      <td class="rank">${medal(i)}</td><td>${esc(r.name)}</td>
+      <td class="rank">${medal(i)}</td><td>${esc(r.name)}</td><td class="muted">${esc(r.mode||'—')}</td>
       <td class="num" style="color:var(--gold)">${r.total}</td><td class="num">${r.boss||'—'}</td>
       <td class="num">${r.correct*10}%</td><td class="num">${r.wf}/20</td><td class="num">${r.rec}/20</td>
       <td class="num">${String(Math.floor(r.time/60)).padStart(2,'0')}:${String(r.time%60).padStart(2,'0')}</td></tr>`).join('')}</tbody></table>`
@@ -1815,10 +1959,70 @@ async function renderBoard(me){
 }
 
 /* ---------- 教師版 ---------- */
-function renderTeacher(){
+function fmtTime(ms){if(!ms)return'—';const d=new Date(ms);const p=n=>String(n).padStart(2,'0');
+  return `${d.getMonth()+1}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`}
+function fmtDur(s){s=s||0;return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+function csvEscape(v){v=String(v==null?'':v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+async function exportCSV(){
+  const list=(await loadRecs()).slice().sort((a,b)=>a.loginAt-b.loginAt);
+  const head=['學號','姓名','完整填寫','模式','AI評分','登入時間','最後作答','完成','答題數','酒款正確','風味分析','餐點分析','搭配邏輯','個人化推薦','連勝獎勵','總分','Boss','用時秒'];
+  const rows=list.map(r=>[r.sid,r.name,r.who,r.modeName,r.ai==='on'?'開':'關',fmtTime(r.loginAt),fmtTime(r.lastAt),
+    r.finished?'是':'否',r.answered,r.correct,r.wf,r.df,r.reason,r.rec,r.bonus,r.total,r.boss,r.elapsed]);
+  const csv='\ufeff'+[head,...rows].map(a=>a.map(csvEscape).join(',')).join('\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  const a=document.createElement('a');a.href=url;a.download='酒單挑戰王_成績紀錄.csv';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),4000);
+  toast('已匯出 CSV');
+}
+async function teacherData(){
+  const list=(await loadRecs()).slice().sort((a,b)=>b.lastAt-a.lastAt);
+  const fin=list.filter(r=>r.finished);
+  const avg=fin.length?Math.round(fin.reduce((s,r)=>s+r.total,0)/fin.length):0;
+  const learn=list.filter(r=>r.mode==='relaxed').length;
+  const race=list.length-learn;
+  const stat=`<div class="verdict">
+    <div class="vitem"><b>總場次</b><s>${list.length}</s></div>
+    <div class="vitem"><b>已完成</b><s>${fin.length}</s></div>
+    <div class="vitem"><b>平均總分</b><s>${avg}</s></div>
+    <div class="vitem"><b>學習模式</b><s>${learn}</s></div>
+    <div class="vitem"><b>競賽模式</b><s>${race}</s></div></div>`;
+  const rows=list.length?list.map(r=>`<tr${r.finished?'':' style="opacity:.62"'}>
+      <td>${esc(r.sid||'—')}</td><td>${esc(r.name||r.who||'')}</td>
+      <td>${esc(r.modeName||'')}</td>
+      <td class="muted">${fmtTime(r.loginAt)}</td>
+      <td class="muted">${fmtTime(r.lastAt)}</td>
+      <td class="num">${r.answered}/10</td>
+      <td class="num">${r.correct*10}%</td>
+      <td class="num">${r.reason}/20</td>
+      <td class="num">${r.rec}/20</td>
+      <td class="num" style="color:var(--gold)">${r.total}</td>
+      <td class="num">${r.boss||'—'}</td>
+      <td class="num">${fmtDur(r.elapsed)}</td>
+      <td>${r.finished?'✅':'⏳'}</td></tr>`).join('')
+    :'<tr><td colspan="13" class="muted">目前還沒有任何作答紀錄。</td></tr>';
+  return `${stat}
+    <div style="overflow-x:auto"><table><thead><tr>
+      <th>學號</th><th>姓名</th><th>模式</th><th>登入時間</th><th>最後作答</th>
+      <th style="text-align:right">進度</th><th style="text-align:right">酒款</th>
+      <th style="text-align:right">搭配</th><th style="text-align:right">個人化</th>
+      <th style="text-align:right">總分</th><th style="text-align:right">Boss</th>
+      <th style="text-align:right">用時</th><th>狀態</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+async function renderTeacher(){
+  const data=await teacherData();
   $('#teacherbody').innerHTML=`<div class="card">
     <p class="eyebrow">Teacher Console</p>
-    <h2>教師版｜評分規準與解答</h2>
+    <h2>教師後台｜學生作答紀錄</h2>
+    <p class="muted">學習模式與競賽模式的每一場都會記錄，包含登入時間、進度與各項得分。未完成的場次以灰色顯示。</p>
+    ${data}
+    <div class="row center" style="margin-top:16px">
+      <button class="btn" id="tc-csv">匯出 CSV</button>
+      <button class="btn ghost" id="tc-refresh">重新整理</button>
+      <button class="btn ghost" id="tc-clear">清空所有紀錄</button>
+    </div>
+  </div>
+
+  <div class="card">
     <p class="muted">建議流程：10～40 人各自單機作答 → 系統計分 → 即時排名 → 前 5 名進入 Boss 決勝。全程約 30～50 分鐘。</p>
 
     <details open><summary>每題 10 分的配分</summary>
@@ -1855,10 +2059,19 @@ function renderTeacher(){
       3. 每題講評都附參考答案與課本知識點，可直接投影討論。<br>
       4. 學習模式的每一步都可以「← 回上一步」修改答案，適合分組討論後再送出。<br>
       5. 遊戲進行中誤按瀏覽器返回鍵或關閉分頁時，會先跳出確認視窗並暫停倒數，不會直接遺失作答。<br>
+      6. 每答完一題會自動存檔。學生若中途離開，下次開啟遊戲首頁會出現「找到未完成的紀錄」，可接著原本那一題繼續作答。<br>
+      7. 教師後台密碼為 620620，可查看所有場次的登入時間、模式、進度與各項得分，並可匯出 CSV 進行登分。<br>
       4. 課後請學生截圖個人能力雷達圖，作為學習歷程檔案。</p></details>
 
     <div class="row center" style="margin-top:16px"><button class="btn ghost" id="tc-back">回到首頁</button></div></div>`;
   show('#s-teacher');
+  $('#tc-csv').onclick=()=>{AUDIO.sfx('click');exportCSV()};
+  $('#tc-refresh').onclick=()=>{AUDIO.sfx('tap');renderTeacher()};
+  $('#tc-clear').onclick=async()=>{
+    if(confirm('確定清空全部學生紀錄與排行榜？此動作無法復原。')){
+      await writeRecs([]);await writeBoard([]);await clearSession();
+      toast('已清空');renderTeacher();
+    }};
   $('#tc-back').onclick=()=>{AUDIO.sfx('click');show('#s-home')};
 }
 </script>
