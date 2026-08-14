@@ -471,7 +471,7 @@ footer{max-width:800px;margin:0 auto;padding:0 18px 44px;color:#5D6E79;font-size
    例如 https://script.google.com/macros/s/AKfycb.../exec
    （留空則自動退回單機模式；也可以用網址參數 ?cloud=... 臨時指定）
    ===================================================================== */
-const CLOUD_URL_BUILTIN = "";
+const CLOUD_URL_BUILTIN = "https://script.google.com/macros/s/AKfycbxoLHlPi9agO_djyUWX1hbOfYOH1FpiGz-xrFaphNQ_9XQ7qiKBqhrZwO104WlnfD-Wog/exec";
 
 /* =========================================================
    資料
@@ -893,8 +893,11 @@ const CLOUD = {
   _ok(v){ this.online = true; cloudBadge(); return v; },
   _bad(e){ this.online = false; cloudBadge(); throw e; },
 
-  /* ---- 自架後端（Google Apps Script） ---- */
-  call(payload, ms){
+  /* ---- 自架後端（Google Apps Script）：三種傳輸方式依序嘗試 ---- */
+  lastError:"", lastTransport:"",
+  READ_ACTIONS:["ping","get","board","list"],
+
+  postJSON(payload, ms){
     const self = this;
     const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
     const timer = setTimeout(function(){ if(ctrl) ctrl.abort(); }, ms || 9000);
@@ -904,11 +907,85 @@ const CLOUD = {
       body:JSON.stringify(payload),
       redirect:"follow",
       signal: ctrl ? ctrl.signal : undefined
-    }).then(function(r){ return r.json(); }).then(function(j){
+    }).then(function(r){
+      if(!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function(j){
       clearTimeout(timer);
       if(!j || !j.ok) throw new Error((j && j.error) || "cloud-error");
-      return self._ok(j.data);
-    }).catch(function(e){ clearTimeout(timer); return self._bad(e); });
+      self.lastTransport = "POST";
+      return j.data;
+    }).catch(function(e){ clearTimeout(timer); throw e; });
+  },
+
+  /* JSONP：用 <script> 讀資料，完全不受 CORS 限制 */
+  jsonp(payload, ms){
+    const self = this;
+    return new Promise(function(resolve, reject){
+      const cb = "lhuCb" + Math.random().toString(36).slice(2);
+      const params = ["callback=" + cb];
+      Object.keys(payload).forEach(function(k){
+        let v = payload[k];
+        if(v === undefined || v === null) return;
+        if(typeof v === "object") v = JSON.stringify(v);
+        params.push(encodeURIComponent(k) + "=" + encodeURIComponent(v));
+      });
+      const src = self.url + (self.url.indexOf("?") >= 0 ? "&" : "?") + params.join("&");
+      if(src.length > 7000){ reject(new Error("資料太長，無法用 JSONP 傳送")); return; }
+      const sc = document.createElement("script");
+      const done = function(err, data){
+        clearTimeout(t);
+        try{ delete window[cb]; }catch(e){ window[cb] = undefined; }
+        if(sc.parentNode) sc.parentNode.removeChild(sc);
+        if(err) reject(err); else { self.lastTransport = "JSONP"; resolve(data); }
+      };
+      const t = setTimeout(function(){ done(new Error("JSONP 逾時")); }, ms || 9000);
+      window[cb] = function(j){
+        if(!j || !j.ok) done(new Error((j && j.error) || "cloud-error"));
+        else done(null, j.data);
+      };
+      sc.onerror = function(){ done(new Error("JSONP 載入失敗")); };
+      sc.src = src;
+      document.head.appendChild(sc);
+    });
+  },
+
+  /* no-cors：讀不到回應，但請求送得到伺服器，用於寫入 */
+  beacon(payload){
+    const self = this;
+    return fetch(this.url, {
+      method:"POST", mode:"no-cors",
+      headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify(payload)
+    }).then(function(){ self.lastTransport = "no-cors"; return {queued:true}; });
+  },
+
+  call(payload, ms){
+    const self = this;
+    return this.postJSON(payload, ms).then(function(d){ return self._ok(d); }).catch(function(e1){
+      self.lastError = String(e1 && e1.message ? e1.message : e1);
+      const isRead = self.READ_ACTIONS.indexOf(payload.action) >= 0;
+      return self.jsonp(payload, ms).then(function(d){ return self._ok(d); }).catch(function(e2){
+        self.lastError = self.lastError + " ／ JSONP：" + String(e2 && e2.message ? e2.message : e2);
+        if(!isRead){
+          return self.beacon(payload).then(function(d){ return self._ok(d); }).catch(function(e3){
+            self.lastError = self.lastError + " ／ no-cors：" + String(e3 && e3.message ? e3.message : e3);
+            return self._restDown(e3);
+          });
+        }
+        return self._restDown(e2);
+      });
+    });
+  },
+  _restDown(e){
+    /* 自架後端完全不通時，改用 Claude 共用空間，遊戲不會失去雲端 */
+    if(this.mode === "rest" && artifactStore()){
+      this.mode = "artifact";
+      this.restFailed = true;
+      this.online = null;
+      cloudBadge();
+    }
+    return this._bad(e);
   },
 
   /* ---- 對外介面：兩種後端共用 ---- */
@@ -986,11 +1063,19 @@ const CLOUD = {
   }
 };
 CLOUD.init();
+/* 一載入就測一次連線；自架後端不通就自動切換到可用的後端 */
+setTimeout(function(){
+  if(!CLOUD.configured()) return;
+  CLOUD.ping().then(function(){ cloudBadge(); }).catch(function(){
+    if(CLOUD.mode === "artifact") CLOUD.ping().then(function(){ cloudBadge(); }).catch(function(){ cloudBadge(); });
+    else cloudBadge();
+  });
+}, 300);
 
 function cloudState(){
   if(!CLOUD.configured()) return {txt:"單機模式：成績只留在這台裝置", cls:"off"};
   if(CLOUD.online === true)  return {txt:"雲端已連線（"+CLOUD.label()+"）：進度與排名跨裝置同步", cls:"on"};
-  if(CLOUD.online === false) return {txt:"雲端暫時連不上，先存在本機", cls:"bad"};
+  if(CLOUD.online === false) return {txt:"雲端暫時連不上，先存在本機（稍後自動重試）", cls:"bad"};
   return {txt:"雲端連線中…（"+CLOUD.label()+"）", cls:""};
 }
 function cloudBadge(){
@@ -2428,6 +2513,7 @@ function drawSettings(){
     <div class="tsum">
       <div><span>目前後端</span><b style="font-size:15px">${CLOUD.label()}</b></div>
       <div><span>連線狀態</span><b style="font-size:15px">${CLOUD.online===true?"已連線":CLOUD.online===false?"連不上":"尚未測試"}</b></div>
+      <div><span>自架後端</span><b style="font-size:15px">${CLOUD.restFailed?"連不上，已改用共用空間":(CLOUD.url?"已設定":"未設定")}</b></div>
       <div><span>本機儲存</span><b style="font-size:15px">${Store.persistent()?"可用":"不可用"}</b></div>
     </div>
     <p class="lead">這份遊戲有兩種雲端後端，會自動選用：</p>
@@ -2439,9 +2525,12 @@ function drawSettings(){
     <input type="text" id="cloudUrl" data-no-mic="1" placeholder="https://script.google.com/macros/s/AKfycb..../exec" value="${esc(CLOUD.url||"")}">
     <div class="bar">
       <button class="mini" id="cdSave">儲存並測試連線</button>
+      <button class="mini" id="cdDiag">連線診斷</button>
+      <a class="mini" id="cdOpen" href="#" target="_blank" rel="noopener" style="text-decoration:none">在新分頁開啟後端</a>
       <button class="mini dan" id="cdClearUrl">清除網址（改用預設）</button>
       <span class="cloud-badge" data-cloud-badge></span>
     </div>
+    <div id="diagBox"></div>
     <p class="note">注意：在這裡填的網址只會存在<b>這一台裝置</b>。要讓全班都連到同一個試算表，請把網址寫進 HTML 檔開頭的 <code>CLOUD_URL_BUILTIN</code> 再發給學生。</p>`;
   cloudBadge();
   document.getElementById("cdSave").addEventListener("click", ()=>{
@@ -2453,6 +2542,47 @@ function drawSettings(){
   document.getElementById("cdClearUrl").addEventListener("click", ()=>{
     CLOUD.setUrl(""); drawSettings();
   });
+  const openLink = document.getElementById("cdOpen");
+  const u = (document.getElementById("cloudUrl").value || "").trim();
+  openLink.href = u ? (u + (u.indexOf("?")>=0?"&":"?") + "action=ping") : "#";
+  document.getElementById("cdDiag").addEventListener("click", runDiagnostics);
+}
+
+/* 逐項測試三種傳輸方式，把真正的錯誤訊息顯示出來 */
+function runDiagnostics(){
+  const box = document.getElementById("diagBox");
+  const url = (document.getElementById("cloudUrl").value || "").trim();
+  if(!url){ box.innerHTML = '<p class="note">請先填入後端網址。</p>'; return; }
+  CLOUD.setUrl(url);
+  const lines = [];
+  const paint = ()=>{ box.innerHTML = '<div class="fb"><span class="pts">連線診斷</span>' + lines.join("<br>") + '</div>'; };
+  lines.push("環境：" + (location.protocol) + "　·　後端網址長度 " + url.length);
+  lines.push("網址格式：" + (/\/exec$/.test(url) ? "✅ 以 /exec 結尾" : "⚠️ 不是以 /exec 結尾，可能複製到 /dev 或錯誤網址"));
+  paint();
+
+  const step = (name, fn)=>fn().then(function(d){
+    lines.push(name + "：✅ 成功 " + (d ? JSON.stringify(d).slice(0,120) : ""));
+  }).catch(function(e){
+    lines.push(name + "：❌ " + String(e && e.message ? e.message : e));
+  }).then(paint);
+
+  step("① 一般 POST（可讀回應）", ()=>CLOUD.postJSON({action:"ping"}, 9000))
+    .then(()=>step("② JSONP（避開 CORS）", ()=>CLOUD.jsonp({action:"ping"}, 9000)))
+    .then(()=>step("③ no-cors 寫入測試", ()=>CLOUD.beacon({action:"save", record:{
+        account:"__連線測試__", updated:Date.now(), level:1, exp:0, elapsed:0, hearts:3,
+        penalty:0, scores:{}, picks:{}, finished:false, plays:0, best:0 }})))
+    .then(()=>{
+      lines.push("——");
+      if(CLOUD.online === true){
+        lines.push("結論：後端可用，目前使用 " + (CLOUD.lastTransport||"POST") + " 傳輸。");
+      } else {
+        lines.push("結論：後端目前無法讀取。若 ③ 顯示成功，請到試算表確認是否出現「__連線測試__」這一列——");
+        lines.push("　· 有出現 → 請求送得到，只是回應被 CORS 擋住，資料仍會寫入，但排名與續玩需要可讀的連線。");
+        lines.push("　· 沒出現 → 部署本身有問題，請重新部署（類型：網頁應用程式；存取權：任何人；網址以 /exec 結尾）。");
+        if(CLOUD.restFailed) lines.push("　· 遊戲已自動改用 " + CLOUD.label() + " 繼續運作。");
+      }
+      paint();
+    });
 }
 
 function drawHelp(){
