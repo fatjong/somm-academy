@@ -414,6 +414,11 @@ footer{max-width:800px;margin:0 auto;padding:0 18px 44px;color:#5D6E79;font-size
 .tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);
   font:inherit;font-size:14px;padding:9px 15px;cursor:pointer}
 .tabs button.on{color:var(--gold);border-bottom-color:var(--gold)}
+.cloud-badge{display:inline-block;font-family:var(--mono);font-size:12px;color:var(--gold);
+  border:1px solid var(--line-soft);padding:4px 11px}
+.cloud-badge.on{color:var(--ok);border-color:rgba(95,227,176,.45)}
+.cloud-badge.bad{color:#FF9AAC;border-color:rgba(255,77,106,.45)}
+.cloud-badge.off{color:var(--muted)}
 
 </style>
 </head>
@@ -459,6 +464,14 @@ footer{max-width:800px;margin:0 auto;padding:0 18px 44px;color:#5D6E79;font-size
 
 <script>
 "use strict";
+
+/* =====================================================================
+   雲端同步設定  ── 老師只需要改下面這一行
+   把 Google Apps Script 的「網頁應用程式」部署網址貼進引號中，
+   例如 https://script.google.com/macros/s/AKfycb.../exec
+   （留空則自動退回單機模式；也可以用網址參數 ?cloud=... 臨時指定）
+   ===================================================================== */
+const CLOUD_URL_BUILTIN = "";
 
 /* =========================================================
    資料
@@ -835,6 +848,173 @@ Store.init();
 const K_PLAYERS = "LHU_SOMM_PLAYERS";
 const K_LAST    = "LHU_SOMM_LAST";
 
+
+/* =========================================================
+   雲端層：跨裝置同步玩家進度與排名
+   ========================================================= */
+const K_CLOUD = "LHU_SOMM_CLOUD";
+const K_CLOUD_PLAYERS = "lhu:somm:players:v1";   /* 共用空間：全班玩家紀錄（含進度與排名） */
+
+function artifactStore(){
+  return (typeof window !== "undefined" && window.storage && typeof window.storage.get === "function");
+}
+
+const CLOUD = {
+  url:"", online:null, pass:"", mode:"local",
+  init(){
+    let u = CLOUD_URL_BUILTIN || "";
+    try{
+      const q = new URLSearchParams(location.search);
+      if(q.get("cloud")) u = q.get("cloud");
+    }catch(e){}
+    const saved = Store.get(K_CLOUD);
+    if(saved && saved.url) u = saved.url;
+    this.url = (u || "").trim();
+    this.mode = /^https:\/\/\S+/.test(this.url) ? "rest" : (artifactStore() ? "artifact" : "local");
+  },
+  configured(){ return this.mode !== "local"; },
+  setUrl(u){
+    this.url = (u||"").trim();
+    Store.set(K_CLOUD, {url:this.url});
+    this.online = null;
+    this.init();
+  },
+  label(){
+    return this.mode === "rest" ? "Google 試算表" : this.mode === "artifact" ? "Claude 共用空間" : "單機";
+  },
+
+  /* ---- 共用空間（與先前那款遊戲相同的做法） ---- */
+  _read(){
+    return window.storage.get(K_CLOUD_PLAYERS, true)
+      .then(function(r){ try{ return r && r.value ? JSON.parse(r.value) : {}; }catch(e){ return {}; } })
+      .catch(function(){ return {}; });
+  },
+  _write(map){ return window.storage.set(K_CLOUD_PLAYERS, JSON.stringify(map), true); },
+  _ok(v){ this.online = true; cloudBadge(); return v; },
+  _bad(e){ this.online = false; cloudBadge(); throw e; },
+
+  /* ---- 自架後端（Google Apps Script） ---- */
+  call(payload, ms){
+    const self = this;
+    const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    const timer = setTimeout(function(){ if(ctrl) ctrl.abort(); }, ms || 9000);
+    return fetch(this.url, {
+      method:"POST",
+      headers:{"Content-Type":"text/plain;charset=utf-8"},  /* 避開 CORS 預檢 */
+      body:JSON.stringify(payload),
+      redirect:"follow",
+      signal: ctrl ? ctrl.signal : undefined
+    }).then(function(r){ return r.json(); }).then(function(j){
+      clearTimeout(timer);
+      if(!j || !j.ok) throw new Error((j && j.error) || "cloud-error");
+      return self._ok(j.data);
+    }).catch(function(e){ clearTimeout(timer); return self._bad(e); });
+  },
+
+  /* ---- 對外介面：兩種後端共用 ---- */
+  ping(){
+    if(this.mode === "rest") return this.call({action:"ping"}, 8000);
+    if(this.mode === "artifact"){ const self=this; return this._read().then(function(m){ return self._ok({count:Object.keys(m).length}); }); }
+    return Promise.reject(new Error("local"));
+  },
+  save(rec){
+    if(this.mode === "rest") return this.call({action:"save", record:rec});
+    if(this.mode === "artifact"){
+      const self = this;
+      return this._read().then(function(map){
+        const cur = map[rec.account];
+        if(cur && (cur.updated||0) > (rec.updated||0) && !rec.finished) return self._ok(cur);
+        if(cur && cur.best && (!rec.best || cur.best > rec.best)) rec.best = cur.best;
+        if(cur && cur.plays && (rec.plays||0) < cur.plays) rec.plays = cur.plays;
+        map[rec.account] = rec;
+        return self._write(map).then(function(){ return self._ok(rec); });
+      }).catch(function(e){ return self._bad(e); });
+    }
+    return Promise.reject(new Error("local"));
+  },
+  load(account){
+    if(this.mode === "rest") return this.call({action:"get", account:account});
+    if(this.mode === "artifact"){
+      const self = this;
+      return this._read().then(function(map){ return self._ok(map[account] || null); });
+    }
+    return Promise.reject(new Error("local"));
+  },
+  list(){
+    if(this.mode === "rest") return this.call({action:"list", pass:this.pass});
+    if(this.mode === "artifact"){
+      const self = this;
+      return this._read().then(function(map){
+        return self._ok(Object.keys(map).map(function(k){ return map[k]; }));
+      });
+    }
+    return Promise.reject(new Error("local"));
+  },
+  board(){
+    if(this.mode === "rest") return this.call({action:"board"});
+    return this.list().then(function(rows){
+      return rows.filter(function(r){ return r.finished; }).map(function(r){
+        const ab = r.abilities || [];
+        return {
+          name:r.account, score:r.best || r.exp || 0, time:r.elapsed || 0,
+          flavor:(ab[0]||{}).v || 0, pairing:(ab[1]||{}).v || 0, guest:(ab[2]||{}).v || 0,
+          at:r.finishedAt || r.updated || 0
+        };
+      });
+    });
+  },
+  remove(a){
+    if(this.mode === "rest") return this.call({action:"delete", account:a, pass:this.pass});
+    const self = this;
+    return this._read().then(function(map){ delete map[a]; return self._write(map); });
+  },
+  resetOne(a){
+    if(this.mode === "rest") return this.call({action:"reset", account:a, pass:this.pass});
+    const self = this;
+    return this._read().then(function(map){
+      const r = map[a];
+      if(r){
+        r.level=1; r.exp=0; r.elapsed=0; r.hearts=3; r.penalty=0;
+        r.scores={}; r.picks={}; r.finished=false; r.updated=Date.now();
+      }
+      return self._write(map);
+    });
+  },
+  wipe(){
+    if(this.mode === "rest") return this.call({action:"wipe", pass:this.pass});
+    return this._write({});
+  }
+};
+CLOUD.init();
+
+function cloudState(){
+  if(!CLOUD.configured()) return {txt:"單機模式：成績只留在這台裝置", cls:"off"};
+  if(CLOUD.online === true)  return {txt:"雲端已連線（"+CLOUD.label()+"）：進度與排名跨裝置同步", cls:"on"};
+  if(CLOUD.online === false) return {txt:"雲端暫時連不上，先存在本機", cls:"bad"};
+  return {txt:"雲端連線中…（"+CLOUD.label()+"）", cls:""};
+}
+function cloudBadge(){
+  document.querySelectorAll("[data-cloud-badge]").forEach(function(el){
+    const st = cloudState();
+    el.textContent = "☁ " + st.txt;
+    el.className = "cloud-badge " + st.cls;
+  });
+}
+/* 把雲端上的紀錄寫回本機一份，離線時仍可續玩 */
+function mergeIntoLocal(rec){
+  if(!rec || !rec.account) return;
+  const players = allPlayers();
+  const cur = players[rec.account];
+  if(!cur || (rec.updated||0) >= (cur.updated||0)){
+    players[rec.account] = rec;
+    Store.set(K_PLAYERS, players);
+  }
+}
+function pushCloud(rec){
+  if(!CLOUD.configured()) return;
+  CLOUD.save(rec).catch(function(){ /* 失敗就保持本機，下一關會再試 */ });
+}
+
 /* =========================================================
    密碼雜湊（後台密碼不以明文存在於程式碼中）
    ========================================================= */
@@ -974,6 +1154,7 @@ function saveProgress(nextLevel, finished){
   players[state.name] = rec;
   Store.set(K_PLAYERS, players);
   Store.set(K_LAST, state.name);
+  pushCloud(rec);
 }
 const LEVEL_RENDER = {1:function(){renderL1(0);}, 2:renderL2, 3:renderL3, 4:renderL4, 5:renderL5, 6:renderBoss};
 function resumeGame(rec){
@@ -1138,6 +1319,8 @@ function renderIntro(){
       <button class="btn" id="go">入座，開始挑戰</button>
       ${last ? '<button class="btn ghost" id="clr">換一個帳號</button>' : ""}
       <button class="btn ghost" id="rank">🏆 檢視玩家排名</button>
+      <div class="spacer"></div>
+      <span class="cloud-badge" data-cloud-badge>☁ 檢查中…</span>
       ${Store.persistent() ? "" : '<div class="spacer"></div><span class="note">目前無法寫入瀏覽器儲存空間，進度只保留在這次遊戲中</span>'}
     </div>
 
@@ -1167,6 +1350,8 @@ function renderIntro(){
   if($("clr")) $("clr").addEventListener("click", ()=>{ input.value=""; input.focus(); });
   $("teacherMore").addEventListener("click", teacherPage);
   $("rank").addEventListener("click", openRanking);
+  cloudBadge();
+  if(CLOUD.configured() && CLOUD.online === null) CLOUD.ping().catch(function(){});
   $("go").addEventListener("click", ()=>{
     const v = input.value.trim().replace(/\s+/g," ");
     if(v.length < 2){ input.focus(); toast("請填寫「學號＋姓名」，例如 11012345 王小明"); return; }
@@ -1176,8 +1361,25 @@ function renderIntro(){
 
 /* 登入後：有未完成進度就先問要不要接續 */
 function startFlow(name){
-  const players = allPlayers();
-  const rec = players[name];
+  if(!CLOUD.configured()){ startFlow2(name, allPlayers()[name]); return; }
+  const wait = document.createElement("div");
+  wait.className = "ov"; wait.id = "ovWait";
+  wait.innerHTML = '<div class="ov-in"><div class="ov-q">☁</div><h2>正在查詢雲端存檔…</h2>'+
+    '<p class="ov-msg">確認你在其他裝置上有沒有未完成的進度。</p></div>';
+  document.body.appendChild(wait);
+  CLOUD.load(name).then(function(cr){
+    if(cr && cr.account) mergeIntoLocal(cr);
+    const local = allPlayers()[name];
+    let best = local;
+    if(cr && cr.account && (!local || (cr.updated||0) > (local.updated||0))) best = cr;
+    wait.remove();
+    startFlow2(name, best);
+  }).catch(function(){
+    wait.remove();
+    startFlow2(name, allPlayers()[name]);
+  });
+}
+function startFlow2(name, rec){
   const canResume = rec && !rec.finished && rec.level > 1 && rec.level <= 6;
   if(!canResume){ beginNew(name); return; }
   const ov = document.createElement("div");
@@ -1189,7 +1391,7 @@ function startFlow(name){
       <div class="ov-pill">${esc(name)}</div>
       <p class="ov-msg">上次進行到 <b style="color:var(--gold)">Level ${rec.level} · ${esc(QUESTS[rec.level])}</b><br>
         目前 ${fmt(rec.exp)} EXP　·　已用 ${mmss(rec.elapsed||0)}　·　剩餘 ❤️ ${rec.hearts}<br>
-        <span class="note">存檔時間：${new Date(rec.updated).toLocaleString("zh-TW")}</span></p>
+        <span class="note">存檔時間：${new Date(rec.updated).toLocaleString("zh-TW")}${CLOUD.online?"（來自雲端）":""}</span></p>
       <div class="bar">
         <button class="btn ghost" id="rsNew">重新開始</button>
         <div class="spacer"></div>
@@ -1995,6 +2197,7 @@ function openTeacherGate(){
     const v = inp.value;
     if(sha256(TEACHER_SALT + v) === TEACHER_HASH){
       teacherUnlocked = true;
+      CLOUD.pass = v;
       AUDIO.right();
       ov.remove();
       teacherPanel();
@@ -2018,8 +2221,9 @@ function teacherPanel(){
       <div class="eyebrow">Instructor Console · 教師後台</div>
       <h2>玩家帳號與進度管理</h2>
       <div class="tabs">
-        <button class="on" data-t="local">本機玩家紀錄</button>
-        <button data-t="cloud">線上排行榜</button>
+        <button class="on" data-t="cloud">雲端全班紀錄</button>
+        <button data-t="local">本機紀錄</button>
+        <button data-t="set">雲端設定</button>
         <button data-t="help">使用說明</button>
       </div>
       <div id="adBody"></div>
@@ -2032,7 +2236,7 @@ function teacherPanel(){
     </div>`;
   document.body.appendChild(ov);
   ov.querySelector("#adClose").addEventListener("click", ()=>ov.remove());
-  ov.querySelector("#adCsv").addEventListener("click", exportCsv);
+  ov.querySelector("#adCsv").addEventListener("click", ()=>exportCsv());
   ov.querySelector("#adWipe").addEventListener("click", ()=>{
     if(!confirm("確定要清空這台裝置上所有玩家的紀錄嗎？此動作無法復原。")) return;
     Store.del(K_PLAYERS); Store.del(K_LAST);
@@ -2043,10 +2247,11 @@ function teacherPanel(){
       ov.querySelectorAll(".tabs button").forEach(x=>x.classList.remove("on"));
       b.classList.add("on");
       const t = b.dataset.t;
-      if(t==="local") drawLocal(); else if(t==="cloud") drawCloud(); else drawHelp();
+      if(t==="local") drawLocal(); else if(t==="cloud") drawCloud();
+      else if(t==="set") drawSettings(); else drawHelp();
     });
   });
-  drawLocal();
+  drawCloud();
 }
 
 function playerRows(){
@@ -2126,44 +2331,141 @@ function drawLocal(){
   });
 }
 
+function cloudRowsHtml(rows){
+  return `<table class="tbl"><thead><tr>
+      <th>學號＋姓名</th><th>進度</th><th>EXP</th><th>最佳</th><th>用時</th><th>完成次數</th><th>最後更新</th><th>管理</th>
+    </tr></thead><tbody>${rows.map(r=>`
+      <tr>
+        <td><b>${esc(r.account)}</b></td>
+        <td><span class="pill-state ${r.finished?"done":""}">${r.finished?"已完成":"Level "+Math.min(6,r.level||1)+" / 6"}</span></td>
+        <td>${fmt(r.exp||0)}</td>
+        <td>${fmt(r.best||0)}</td>
+        <td>${mmss(r.elapsed||0)}</td>
+        <td>${r.plays||0}</td>
+        <td class="note">${r.updated?new Date(r.updated).toLocaleString("zh-TW"):"-"}</td>
+        <td style="white-space:nowrap">
+          <button class="mini" data-cact="detail" data-k="${esc(r.account)}">詳情</button>
+          <button class="mini" data-cact="reset" data-k="${esc(r.account)}">重設</button>
+          <button class="mini dan" data-cact="del" data-k="${esc(r.account)}">刪除</button>
+        </td>
+      </tr>`).join("")}</tbody></table>`;
+}
+let cloudCache = [];
 function drawCloud(){
   const box = document.getElementById("adBody");
-  box.innerHTML = `<p class="empty">正在讀取線上排行榜…</p>`;
-  if(!hasStore){
-    box.innerHTML = `<p class="empty">這個環境沒有線上排行榜（把檔案下載到本機開啟時屬正常情形）。所有成績都保存在「本機玩家紀錄」。</p>`;
+  if(!box) return;
+  if(!CLOUD.configured()){
+    box.innerHTML = `<p class="empty">目前是單機模式，沒有雲端資料。請到「雲端設定」分頁設定後端，或直接使用「本機紀錄」。</p>`;
     return;
   }
-  window.storage.get(KEY, true).then(r=>{
-    let list = [];
-    try{ list = r && r.value ? JSON.parse(r.value) : []; }catch(e){ list = []; }
-    list.sort((a,b)=> b.score-a.score || a.time-b.time);
-    box.innerHTML = list.length ? `
-      <table class="tbl"><thead><tr><th>#</th><th>學號＋姓名</th><th>總分</th><th>用時</th><th>風味</th><th>搭配</th><th>顧客</th><th>時間</th></tr></thead>
-      <tbody>${list.map((r2,i)=>`<tr><td>${i+1}</td><td><b>${esc(r2.name)}</b></td><td>${fmt(r2.score)}</td>
-        <td>${mmss(r2.time)}</td><td>${r2.flavor}</td><td>${r2.pairing}</td><td>${r2.guest}</td>
-        <td class="note">${new Date(r2.at).toLocaleString("zh-TW")}</td></tr>`).join("")}</tbody></table>
-      <div class="bar"><button class="mini dan" id="adClear">清空線上排行榜</button></div>`
-      : `<p class="empty">線上排行榜還沒有資料。</p>`;
-    const cb = document.getElementById("adClear");
-    if(cb) cb.addEventListener("click", ()=>{
-      if(!confirm("確定清空線上排行榜嗎？所有班級的成績都會消失。")) return;
-      window.storage.set(KEY, JSON.stringify([]), true).then(()=>drawCloud());
+  box.innerHTML = `<p class="empty">正在讀取雲端全班紀錄…</p>`;
+  CLOUD.list().then(function(rows){
+    cloudCache = rows || [];
+    const done = cloudCache.filter(r=>r.finished);
+    const avg = done.length ? done.reduce((a,r)=>a+(r.best||r.exp||0),0)/done.length : 0;
+    const top = cloudCache.reduce((m,r)=>Math.max(m, r.best||r.exp||0), 0);
+    box.innerHTML = `
+      <div class="tsum">
+        <div><span>雲端玩家數</span><b>${cloudCache.length}</b></div>
+        <div><span>已完成</span><b>${done.length}</b></div>
+        <div><span>完成平均 EXP</span><b>${fmt(Math.round(avg*10)/10)}</b></div>
+        <div><span>最高 EXP</span><b>${fmt(top)}</b></div>
+        <div><span>後端</span><b style="font-size:14px">${CLOUD.label()}</b></div>
+      </div>
+      ${cloudCache.length ? cloudRowsHtml(cloudCache.slice().sort((a,b)=>(b.updated||0)-(a.updated||0)))
+        : '<p class="empty">雲端上還沒有任何玩家紀錄。</p>'}
+      <div class="bar"><button class="mini" id="cdCsv">匯出雲端 CSV</button>
+        <button class="mini" id="cdPull">把雲端資料抓回本機</button>
+        <button class="mini dan" id="cdWipe">清空雲端所有紀錄</button></div>`;
+    box.querySelectorAll("button[data-cact]").forEach(b=>{
+      b.addEventListener("click", ()=>{
+        const key = b.dataset.k, act = b.dataset.cact;
+        if(act==="del"){
+          if(!confirm("確定從雲端刪除「"+key+"」的紀錄嗎？")) return;
+          CLOUD.remove(key).then(drawCloud).catch(()=>alert("刪除失敗，請確認網路或後端設定。"));
+        } else if(act==="reset"){
+          if(!confirm("確定把雲端上「"+key+"」的進度歸零嗎？帳號會保留。")) return;
+          CLOUD.resetOne(key).then(drawCloud).catch(()=>alert("重設失敗。"));
+        } else {
+          const r = cloudCache.filter(x=>x.account===key)[0];
+          const tr = b.closest("tr");
+          if(tr.nextElementSibling && tr.nextElementSibling.classList.contains("detail")){ tr.nextElementSibling.remove(); return; }
+          const levels = [1,2,3,4,5,6].map(lv=>{
+            const got = (LEVEL_KEYS[lv]||[]).reduce((a,k2)=>a+((r.scores||{})[k2]||0),0);
+            const reached = (r.level||1) > lv || r.finished;
+            return `Level ${lv} ${QUESTS[lv]}：${reached? fmt(got)+" / "+LEVEL_MAX[lv] : "未進行"}`;
+          }).join("　·　");
+          const ab = r.abilities ? r.abilities.map(a=>a.label+" "+a.v).join("　·　") : "（完成後才會產生）";
+          const d = document.createElement("tr");
+          d.className = "detail";
+          d.innerHTML = `<td colspan="8"><b style="color:var(--gold)">各關得分</b><br>${levels}<br><br>
+            <b style="color:var(--gold)">能力分析</b><br>${ab}<br><br>
+            <b style="color:var(--gold)">提示扣分</b> ${fmt(r.penalty||0)}　·　
+            <b style="color:var(--gold)">Boss 選酒</b> ${esc((r.picks||{}).boss||"-")}</td>`;
+          tr.insertAdjacentElement("afterend", d);
+        }
+      });
     });
-  }).catch(()=>{ box.innerHTML = `<p class="empty">線上排行榜讀取失敗。</p>`; });
+    document.getElementById("cdCsv").addEventListener("click", ()=>exportCsv(cloudCache));
+    document.getElementById("cdPull").addEventListener("click", ()=>{
+      const players = allPlayers();
+      cloudCache.forEach(r=>{ players[r.account] = r; });
+      Store.set(K_PLAYERS, players);
+      alert("已把 "+cloudCache.length+" 筆雲端紀錄存到這台裝置。");
+    });
+    document.getElementById("cdWipe").addEventListener("click", ()=>{
+      if(!confirm("確定清空雲端所有玩家紀錄嗎？全班資料都會消失，且無法復原。")) return;
+      CLOUD.wipe().then(drawCloud).catch(()=>alert("清空失敗。"));
+    });
+  }).catch(function(){
+    box.innerHTML = `<p class="empty">雲端讀取失敗。請確認網路，或到「雲端設定」檢查後端網址。</p>`;
+  });
+}
+
+function drawSettings(){
+  const box = document.getElementById("adBody");
+  box.innerHTML = `
+    <div class="tsum">
+      <div><span>目前後端</span><b style="font-size:15px">${CLOUD.label()}</b></div>
+      <div><span>連線狀態</span><b style="font-size:15px">${CLOUD.online===true?"已連線":CLOUD.online===false?"連不上":"尚未測試"}</b></div>
+      <div><span>本機儲存</span><b style="font-size:15px">${Store.persistent()?"可用":"不可用"}</b></div>
+    </div>
+    <p class="lead">這份遊戲有兩種雲端後端，會自動選用：</p>
+    <p class="lead">
+      <b style="color:var(--gold)">A. Claude 共用空間</b>（在 Claude 裡開啟遊戲時自動生效，免設定）。同一份遊戲的所有裝置共用一份全班紀錄，學生換一台電腦、用同一組「學號＋姓名」登入就能接續進度。<br><br>
+      <b style="color:var(--gold)">B. Google 試算表</b>（把 HTML 檔下載發給學生時使用）。請依附件的說明部署 Apps Script，取得網址後貼在下面，或直接寫進 HTML 最上方的 <code>CLOUD_URL_BUILTIN</code>。
+    </p>
+    <label class="note" for="cloudUrl">Google Apps Script 網頁應用程式網址</label>
+    <input type="text" id="cloudUrl" data-no-mic="1" placeholder="https://script.google.com/macros/s/AKfycb..../exec" value="${esc(CLOUD.url||"")}">
+    <div class="bar">
+      <button class="mini" id="cdSave">儲存並測試連線</button>
+      <button class="mini dan" id="cdClearUrl">清除網址（改用預設）</button>
+      <span class="cloud-badge" data-cloud-badge></span>
+    </div>
+    <p class="note">注意：在這裡填的網址只會存在<b>這一台裝置</b>。要讓全班都連到同一個試算表，請把網址寫進 HTML 檔開頭的 <code>CLOUD_URL_BUILTIN</code> 再發給學生。</p>`;
+  cloudBadge();
+  document.getElementById("cdSave").addEventListener("click", ()=>{
+    CLOUD.setUrl(document.getElementById("cloudUrl").value);
+    cloudBadge();
+    CLOUD.ping().then(()=>{ cloudBadge(); alert("連線成功，後端：" + CLOUD.label()); })
+                .catch(()=>{ cloudBadge(); alert("連線失敗，請確認網址是否為 /exec 結尾，且部署權限設為「任何人」。"); });
+  });
+  document.getElementById("cdClearUrl").addEventListener("click", ()=>{
+    CLOUD.setUrl(""); drawSettings();
+  });
 }
 
 function drawHelp(){
   document.getElementById("adBody").innerHTML = `
-    <p class="lead">這個後台的資料存在<b>每一台裝置的瀏覽器裡</b>，所以在教室電腦上看到的是那台電腦玩過的學生。若要收齊全班成績，有兩個做法：</p>
-    <p class="lead">1. 各機各自「匯出 CSV」後合併。<br>
-       2. 若環境支援線上排行榜，成績會同步到共用榜單，可在上一個分頁檢視。</p>
-    <p class="lead"><b style="color:var(--gold)">重設進度</b>會清掉分數但保留帳號，適合讓學生重玩一次；<b style="color:var(--gold)">刪除</b>會移除整筆紀錄。</p>
-    <p class="lead">學生端每過一關自動存檔，下次用同一個「學號＋姓名」登入就會被詢問是否接續。</p>
-    <p class="note">密碼以雜湊值儲存於程式中，無法從原始碼直接看出明文；如需更換密碼請向開發者索取新的雜湊值。</p>`;
+    <p class="lead"><b style="color:var(--gold)">資料存在哪裡？</b>學生每過一關就會存檔兩份：一份在該台裝置的瀏覽器，一份在雲端。登入時會先查雲端，若雲端的存檔比較新，就用雲端的，所以換裝置也能接著玩。</p>
+    <p class="lead"><b style="color:var(--gold)">排名</b>同樣來自雲端，全班不同電腦的成績會匯集成同一份榜單，共有總分、風味、搭配、顧客需求、最快完成五種排法。</p>
+    <p class="lead"><b style="color:var(--gold)">重設</b>會清掉分數但保留帳號，適合讓學生重玩；<b style="color:var(--gold)">刪除</b>會移除整筆紀錄。兩者都可以分別對雲端或本機執行。</p>
+    <p class="lead">同一個帳號若同時在兩台裝置上玩，會以最後存檔的那一台為準，建議提醒學生一次只在一台裝置進行。</p>
+    <p class="note">教師密碼以加鹽 SHA-256 雜湊儲存，無法從原始碼看出明文。若要更換密碼，請告訴開發者新的密碼以產生新的雜湊值。</p>`;
 }
 
-function exportCsv(){
-  const rows = playerRows();
+function exportCsv(src){
+  const rows = src || playerRows();
   const head = ["學號姓名","狀態","目前關卡","EXP","最佳EXP","用時秒","剩餘心","提示扣分","完成次數","最後更新",
                 "L1","L2","L3","L4","L5","L6","風味","搭配","顧客","表達","AI判斷"];
   const lines = [head.join(",")];
@@ -2313,15 +2615,20 @@ function openRanking(){
     if(!list.length){ box.innerHTML = '<p class="empty">還沒有人完成挑戰，第一個上榜的可能就是你。</p>'; return; }
     renderBoard(list, mine, mode, box);
   };
-  if(hasStore){
-    window.storage.get(KEY, true).then(r=>{
-      let l = [];
-      try{ l = r && r.value ? JSON.parse(r.value) : []; }catch(e){ l = []; }
-      show(l.length ? l : local, l.length ? "shared" : "local");
-    }).catch(()=>show(local, "local"));
-  } else {
-    show(local, "local");
-  }
+  const fallback = ()=>{
+    if(hasStore){
+      window.storage.get(KEY, true).then(r=>{
+        let l = [];
+        try{ l = r && r.value ? JSON.parse(r.value) : []; }catch(e){ l = []; }
+        show(l.length ? l : local, l.length ? "shared" : "local");
+      }).catch(()=>show(local, "local"));
+    } else show(local, "local");
+  };
+  if(CLOUD.configured()){
+    CLOUD.board().then(function(list){
+      if(list && list.length) show(list, "cloud"); else fallback();
+    }).catch(fallback);
+  } else fallback();
 }
 
 /* =========================================================
@@ -2339,6 +2646,14 @@ async function submitAndRenderBoard(score){
     flavor: ab[0].v, pairing: ab[1].v, guest: ab[2].v,
     at: Date.now()
   };
+  if(CLOUD.configured()){
+    pushCloud(allPlayers()[state.name] || {account:state.name, exp:me.score, updated:Date.now()});
+    CLOUD.board().then(function(rows){
+      if(rows && rows.length) renderBoard(rows, {at:me.at, name:me.name}, "cloud");
+      else renderBoard([me], me, "cloud");
+    }).catch(function(){ renderBoard([me], me, "local"); });
+    return;
+  }
   let list = [];
   let mode = "shared";
   if(hasStore){
@@ -2375,6 +2690,7 @@ function renderBoard(list, me, mode, container){
       <div class="blist"></div>
     </div>
     <p class="note" style="margin-top:8px">${
+      mode==="cloud"  ? "排名來自雲端，全班不同裝置的成績都會匯集在這裡。" :
       mode==="shared" ? "排行榜與同一份遊戲的其他挑戰者共用，你的名字與成績其他人看得到。" :
       mode==="local"  ? "目前顯示這台裝置上已完成挑戰的紀錄。" :
                         "目前是本機模式（離線開啟），成績只留在這一次遊戲中。"}</p>`;
@@ -2383,7 +2699,7 @@ function renderBoard(list, me, mode, container){
     const rows = list.slice().sort(t.cmp).slice(0,10);
     wrap.querySelector(".blist").innerHTML = rows.length
       ? '<ul class="board-list">'+rows.map((r,k)=>
-          '<li class="'+(r.at===me.at?"me":"")+'"><span class="pos">'+(k+1)+'</span><span class="nm">'+esc(r.name)+'</span><span class="vv">'+esc(String(t.val(r)))+'</span></li>').join("")+'</ul>'
+          '<li class="'+((r.at===me.at || (me.name && r.name===me.name))?"me":"")+'"><span class="pos">'+(k+1)+'</span><span class="nm">'+esc(r.name)+'</span><span class="vv">'+esc(String(t.val(r)))+'</span></li>').join("")+'</ul>'
       : '<p class="empty">還沒有人上榜，你是第一個。</p>';
   };
   draw(0);
