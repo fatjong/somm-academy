@@ -1000,9 +1000,16 @@ const CLOUD = {
       const self = this;
       return this._read().then(function(map){
         const cur = map[rec.account];
-        if(cur && (cur.updated||0) > (rec.updated||0) && !rec.finished) return self._ok(cur);
-        if(cur && cur.best && (!rec.best || cur.best > rec.best)) rec.best = cur.best;
-        if(cur && cur.plays && (rec.plays||0) < cur.plays) rec.plays = cur.plays;
+        const runs = mergeRuns(cur && cur.runs, rec.runs);   // 兩台裝置的成績都保留
+        if(cur && (cur.updated||0) > (rec.updated||0) && !rec.finished){
+          cur.runs = runs; cur.plays = runs.length;
+          cur.best = runs.reduce(function(m,x){ return Math.max(m, x.exp||0); }, cur.best||0);
+          map[rec.account] = cur;
+          return self._write(map).then(function(){ return self._ok(cur); });
+        }
+        rec.runs = runs;
+        rec.plays = runs.length;
+        rec.best = runs.reduce(function(m,x){ return Math.max(m, x.exp||0); }, (cur && cur.best) || 0);
         map[rec.account] = rec;
         return self._write(map).then(function(){ return self._ok(rec); });
       }).catch(function(e){ return self._bad(e); });
@@ -1029,16 +1036,7 @@ const CLOUD = {
   },
   board(){
     if(this.mode === "rest") return this.call({action:"board"});
-    return this.list().then(function(rows){
-      return rows.filter(function(r){ return r.finished; }).map(function(r){
-        const ab = r.abilities || [];
-        return {
-          name:r.account, score:r.best || r.exp || 0, time:r.elapsed || 0,
-          flavor:(ab[0]||{}).v || 0, pairing:(ab[1]||{}).v || 0, guest:(ab[2]||{}).v || 0,
-          at:r.finishedAt || r.updated || 0
-        };
-      });
-    });
+    return this.list().then(function(rows){ return boardFromRecords(rows); });
   },
   remove(a){
     if(this.mode === "rest") return this.call({action:"delete", account:a, pass:this.pass});
@@ -1090,10 +1088,18 @@ function mergeIntoLocal(rec){
   if(!rec || !rec.account) return;
   const players = allPlayers();
   const cur = players[rec.account];
+  const runs = mergeRuns(cur && cur.runs, rec.runs);
   if(!cur || (rec.updated||0) >= (cur.updated||0)){
+    rec.runs = runs;
+    rec.plays = runs.length;
+    rec.best = runs.reduce(function(m,x){ return Math.max(m, x.exp||0); }, cur ? (cur.best||0) : 0);
     players[rec.account] = rec;
-    Store.set(K_PLAYERS, players);
+  } else {
+    cur.runs = runs;
+    cur.plays = runs.length;
+    cur.best = runs.reduce(function(m,x){ return Math.max(m, x.exp||0); }, cur.best||0);
   }
+  Store.set(K_PLAYERS, players);
 }
 function pushCloud(rec){
   if(!CLOUD.configured()) return;
@@ -1269,6 +1275,45 @@ new MutationObserver(function(){ enhanceInputs(document); })
    進度存檔
    ========================================================= */
 function allPlayers(){ return Store.get(K_PLAYERS) || {}; }
+
+/* 合併兩份完成紀錄，以完成時間去重，永遠不覆寫舊成績 */
+function mergeRuns(a, b){
+  const out = [], seen = {};
+  (a||[]).concat(b||[]).forEach(function(r){
+    if(!r) return;
+    const k = String(r.finishedAt || 0) + "_" + String(r.exp || 0);
+    if(seen[k]) return;
+    seen[k] = 1;
+    out.push(r);
+  });
+  out.sort(function(x,y){ return (x.finishedAt||0) - (y.finishedAt||0); });
+  return out.slice(-60);
+}
+/* 把一位玩家的所有完成紀錄展開成排行榜項目 */
+function runEntries(rec){
+  if(!rec) return [];
+  const runs = rec.runs || [];
+  const total = runs.length;
+  const out = runs.map(function(r, i){
+    const ab = r.abilities || [];
+    return {
+      name: rec.account, run: i+1, runs: total,
+      score: r.exp || 0, time: r.elapsed || 0,
+      flavor:(ab[0]||{}).v || 0, pairing:(ab[1]||{}).v || 0, guest:(ab[2]||{}).v || 0,
+      at: r.finishedAt || 0
+    };
+  });
+  if(!out.length && rec.finished){          // 舊版存檔沒有 runs，補一筆
+    const ab = rec.abilities || [];
+    out.push({ name:rec.account, run:1, runs:1, score:rec.best||rec.exp||0, time:rec.elapsed||0,
+      flavor:(ab[0]||{}).v||0, pairing:(ab[1]||{}).v||0, guest:(ab[2]||{}).v||0,
+      at: rec.finishedAt || rec.updated || 0 });
+  }
+  return out;
+}
+function boardFromRecords(list){
+  return (list||[]).reduce(function(a, r){ return a.concat(runEntries(r)); }, []);
+}
 function saveProgress(nextLevel, finished){
   if(!state.name) return;
   const players = allPlayers();
@@ -1284,10 +1329,22 @@ function saveProgress(nextLevel, finished){
   rec.picks    = Object.assign({}, state.picks);
   rec.finished = !!finished;
   if(finished){
-    rec.plays = (rec.plays||0) + 1;
-    rec.best  = Math.max(rec.best||0, rec.exp);
-    rec.abilities = abilities().map(function(a){ return {label:a.label, v:a.v}; });
-    rec.finishedAt = Date.now();
+    const run = {
+      exp: rec.exp,
+      elapsed: rec.elapsed,
+      penalty: rec.penalty,
+      hearts: rec.hearts,
+      scores: Object.assign({}, state.scores),
+      picks: Object.assign({}, state.picks),
+      abilities: abilities().map(function(a){ return {label:a.label, v:a.v}; }),
+      finishedAt: Date.now()
+    };
+    rec.runs = mergeRuns(rec.runs, [run]);
+    rec.plays = rec.runs.length;
+    rec.best = rec.runs.reduce(function(m,x){ return Math.max(m, x.exp||0); }, 0);
+    rec.abilities = run.abilities;
+    rec.finishedAt = run.finishedAt;
+    state.finishedAt = run.finishedAt;
   }
   players[state.name] = rec;
   Store.set(K_PLAYERS, players);
@@ -2392,6 +2449,20 @@ function teacherPanel(){
   drawCloud();
 }
 
+
+function runsHtml(rec){
+  const runs = (rec && rec.runs) || [];
+  if(!runs.length) return '<span class="note">尚無完成紀錄</span>';
+  return runs.slice().reverse().map(function(r, idx){
+    const no = runs.length - idx;
+    const ab = (r.abilities||[]).map(function(a){ return a.label+" "+a.v; }).join("／");
+    return "第 " + no + " 次：" + fmt(r.exp||0) + " EXP　用時 " + mmss(r.elapsed||0) +
+           "　提示扣分 " + fmt(r.penalty||0) + "　" +
+           (r.finishedAt ? new Date(r.finishedAt).toLocaleString("zh-TW") : "") +
+           (ab ? "<br><span class='note'>　　" + ab + "</span>" : "");
+  }).join("<br>");
+}
+
 function playerRows(){
   const p = allPlayers();
   return Object.keys(p).map(k=>p[k]).sort((a,b)=> (b.updated||0)-(a.updated||0));
@@ -2457,7 +2528,8 @@ function drawLocal(){
         }).join("　·　");
         const ab = r.abilities ? r.abilities.map(a=>a.label+" "+a.v).join("　·　") : "（完成後才會產生）";
         detail.innerHTML = `<td colspan="8">
-          <b style="color:var(--gold)">各關得分</b><br>${levels}<br><br>
+          <b style="color:var(--gold)">歷次完成紀錄（共 ${(r.runs||[]).length} 次）</b><br>${runsHtml(r)}<br><br>
+          <b style="color:var(--gold)">本次／最近進度的各關得分</b><br>${levels}<br><br>
           <b style="color:var(--gold)">能力分析</b><br>${ab}<br><br>
           <b style="color:var(--gold)">提示扣分</b> ${fmt(r.penalty||0)}　·　
           <b style="color:var(--gold)">第四關選酒</b> ${esc((r.picks||{}).l4||"-")}　·　
@@ -2536,7 +2608,9 @@ function drawCloud(){
           const ab = r.abilities ? r.abilities.map(a=>a.label+" "+a.v).join("　·　") : "（完成後才會產生）";
           const d = document.createElement("tr");
           d.className = "detail";
-          d.innerHTML = `<td colspan="8"><b style="color:var(--gold)">各關得分</b><br>${levels}<br><br>
+          d.innerHTML = `<td colspan="8">
+            <b style="color:var(--gold)">歷次完成紀錄（共 ${(r.runs||[]).length} 次）</b><br>${runsHtml(r)}<br><br>
+            <b style="color:var(--gold)">最近進度的各關得分</b><br>${levels}<br><br>
             <b style="color:var(--gold)">能力分析</b><br>${ab}<br><br>
             <b style="color:var(--gold)">提示扣分</b> ${fmt(r.penalty||0)}　·　
             <b style="color:var(--gold)">Boss 選酒</b> ${esc((r.picks||{}).boss||"-")}</td>`;
@@ -2643,23 +2717,47 @@ function drawHelp(){
     <p class="lead"><b style="color:var(--gold)">資料存在哪裡？</b>學生每過一關就會存檔兩份：一份在該台裝置的瀏覽器，一份在雲端。登入時會先查雲端，若雲端的存檔比較新，就用雲端的，所以換裝置也能接著玩。</p>
     <p class="lead"><b style="color:var(--gold)">排名</b>同樣來自雲端，全班不同電腦的成績會匯集成同一份榜單，共有總分、風味、搭配、顧客需求、最快完成五種排法。</p>
     <p class="lead"><b style="color:var(--gold)">重設</b>會清掉分數但保留帳號，適合讓學生重玩；<b style="color:var(--gold)">刪除</b>會移除整筆紀錄。兩者都可以分別對雲端或本機執行。</p>
-    <p class="lead">同一個帳號若同時在兩台裝置上玩，會以最後存檔的那一台為準，建議提醒學生一次只在一台裝置進行。</p>
+    <p class="lead"><b style="color:var(--gold)">歷次成績都會保留。</b>同一位學生重玩時不會覆蓋舊紀錄，每一次完成都是一筆獨立成績，排行榜上會標示「第幾次」，匯出的 CSV 也是一次一列。「最佳」欄位顯示歷次最高分。</p>
+    <p class="lead"><b style="color:var(--gold)">同分怎麼排？</b>總分相同時，<b>先完成的排在前面</b>（以完成時間先後為準）。</p>
+    <p class="lead">同一個帳號若同時在兩台裝置上玩，進行中的進度以最後存檔的那一台為準，但兩邊已完成的成績都會保留下來。</p>
     <p class="note">教師密碼以加鹽 SHA-256 雜湊儲存，無法從原始碼看出明文。若要更換密碼，請告訴開發者新的密碼以產生新的雜湊值。</p>`;
 }
 
 function exportCsv(src){
   const rows = src || playerRows();
-  const head = ["學號姓名","狀態","目前關卡","EXP","最佳EXP","用時秒","剩餘心","提示扣分","完成次數","最後更新",
+  const head = ["學號姓名","紀錄類型","第幾次","EXP","用時秒","剩餘心","提示扣分","完成時間",
                 "L1","L2","L3","L4","L5","L6","風味","搭配","顧客","表達","AI判斷"];
   const lines = [head.join(",")];
-  rows.forEach(r=>{
-    const lv = [1,2,3,4,5,6].map(l=>fmt((LEVEL_KEYS[l]||[]).reduce((a,k)=>a+((r.scores||{})[k]||0),0)));
-    const ab = (r.abilities||[]).map(a=>a.v);
-    while(ab.length<5) ab.push("");
-    const cells = [r.account, r.finished?"已完成":"進行中", Math.min(6,r.level||1), fmt(r.exp||0), fmt(r.best||0),
-      r.elapsed||0, r.hearts===undefined?"":r.hearts, fmt(r.penalty||0), r.plays||0,
-      r.updated? new Date(r.updated).toLocaleString("zh-TW") : ""].concat(lv).concat(ab);
-    lines.push(cells.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(","));
+  const push = function(cells){
+    lines.push(cells.map(function(c){ return '"' + String(c).replace(/"/g,'""') + '"'; }).join(","));
+  };
+  rows.forEach(function(r){
+    const runs = r.runs || [];
+    runs.forEach(function(run, i){
+      const lv = [1,2,3,4,5,6].map(function(l){
+        return fmt((LEVEL_KEYS[l]||[]).reduce(function(a,k){ return a + ((run.scores||{})[k]||0); }, 0));
+      });
+      const ab = (run.abilities||[]).map(function(a){ return a.v; });
+      while(ab.length < 5) ab.push("");
+      push([r.account, "完成", i+1, fmt(run.exp||0), run.elapsed||0,
+            run.hearts===undefined?"":run.hearts, fmt(run.penalty||0),
+            run.finishedAt ? new Date(run.finishedAt).toLocaleString("zh-TW") : ""]
+           .concat(lv).concat(ab));
+    });
+    if(!r.finished && (r.level||1) > 1){
+      const lv = [1,2,3,4,5,6].map(function(l){
+        return fmt((LEVEL_KEYS[l]||[]).reduce(function(a,k){ return a + ((r.scores||{})[k]||0); }, 0));
+      });
+      push([r.account, "進行中（Level " + Math.min(6, r.level||1) + "）", "", fmt(r.exp||0), r.elapsed||0,
+            r.hearts===undefined?"":r.hearts, fmt(r.penalty||0),
+            r.updated ? new Date(r.updated).toLocaleString("zh-TW") : ""]
+           .concat(lv).concat(["","","","",""]));
+    }
+    if(!runs.length && r.finished){
+      push([r.account, "完成（舊版紀錄）", 1, fmt(r.best||r.exp||0), r.elapsed||0, "", fmt(r.penalty||0),
+            r.finishedAt ? new Date(r.finishedAt).toLocaleString("zh-TW") : ""]
+           .concat(["","","","","",""]).concat(["","","","",""]));
+    }
   });
   const csv = "\ufeff" + lines.join("\r\n");
   try{
@@ -2669,114 +2767,15 @@ function exportCsv(src){
     document.body.appendChild(a); a.click(); a.remove();
   }catch(e){
     const box = document.getElementById("adBody");
-    box.innerHTML = `<p class="lead">這個環境無法直接下載檔案，請手動複製下面的內容貼到試算表：</p>
-      <textarea style="min-height:220px" readonly>${esc(csv)}</textarea>`;
+    box.innerHTML = '<p class="lead">這個環境無法直接下載檔案，請手動複製下面的內容貼到試算表：</p>' +
+      '<textarea style="min-height:220px" readonly data-no-mic="1">' + esc(csv) + '</textarea>';
   }
 }
 
 /* =========================================================
-   結算
-   ========================================================= */
-function abilities(){
-  const g = k=>state.scores[k]||0;
-  const flavor  = (g("l1_0")+g("l1_1")+g("l1_2")+g("b2")) / 19;
-  const pairing = (g("l3a")+g("l3b")+g("b3")+g("b4")) / 18;
-  const guest   = (g("l2")+g("l4a")+g("b1")) / 24;
-  const speak   = (g("l4b")+g("l4c")+g("l4d")+g("b5")) / 19;
-  const ai      = (g("l5a")+g("l5b")) / 20;
-  const pct = x=>Math.round(x*100);
-  return [
-    {k:"flavor", icon:"🍇", label:"風味分析", v:pct(flavor)},
-    {k:"pairing",icon:"🍽️", label:"餐酒搭配", v:pct(pairing)},
-    {k:"guest",  icon:"👤", label:"顧客需求", v:pct(guest)},
-    {k:"speak",  icon:"💬", label:"推薦表達", v:pct(speak)},
-    {k:"ai",     icon:"🤖", label:"AI 判斷",  v:pct(ai)}
-  ];
-}
-function renderResult(){
-  const score = total();
-  const title = FINAL_TITLES.find(t=>score>=t.min);
-  const ab = abilities();
-  const mm = String(Math.floor(state.elapsed/60)).padStart(2,"0");
-  const ss = String(state.elapsed%60).padStart(2,"0");
-  state.level = 6; paintHUD();
-  AUDIO.fadeTo(0.08, 900);
-  AUDIO.fanfare();
-
-  app.innerHTML = `
-  <div class="card">
-    <div class="eyebrow">Final Report · ${esc(state.name)}</div>
-    <div class="big">${fmt(score)}<small> / 100</small></div>
-    <h2 style="margin-top:10px">${title.t}</h2>
-    <p class="lead">${title.d}</p>
-    <p class="note">完成時間 ${mm}:${ss}　·　提示扣分 −${fmt(state.penalty)}　·　剩餘 ❤️ ${state.hearts}</p>
-
-    <hr class="rule">
-    <h3>侍酒師能力分析</h3>
-    ${ab.map(a=>`<div class="abil"><div>${a.icon} ${a.label}</div><div class="track"><div class="fill" data-v="${a.v}"></div></div><div class="v">${a.v}</div></div>`).join("")}
-    <p class="note" style="margin-top:14px">${weakest(ab)}</p>
-
-    <hr class="rule">
-    <h3>排行榜</h3>
-    <div id="boardWrap"><p class="note">正在讀取排行榜…</p></div>
-
-    <div class="bar">
-      <button class="btn ghost" id="again">再挑戰一次</button>
-      <div class="spacer"></div>
-      <button class="btn" id="review">看六關重點回顧</button>
-    </div>
-    <div id="rev"></div>
-  </div>`;
-
-  requestAnimationFrame(()=>{
-    document.querySelectorAll(".fill").forEach(f=>{ f.style.width = f.dataset.v+"%"; });
-  });
-  $("again").addEventListener("click", ()=>{ resetGame(); AUDIO.startMusic(); });
-  $("review").addEventListener("click", showReview);
-  submitAndRenderBoard(score);
-}
-function weakest(ab){
-  const w = ab.slice().sort((a,b)=>a.v-b.v)[0];
-  const advice = {
-    flavor:"下一步先補強風味分析：把六大品種的酒體、酸度、單寧背成一張表，看到酒名就能說出結構。",
-    pairing:"下一步先補強餐酒搭配：記住兩條原則——單寧配油脂、酒與菜的風味強度要相當。",
-    guest:"下一步先補強顧客需求判斷：練習把顧客的每一句話，翻譯成一個具體的酒款條件。",
-    speak:"下一步先補強推薦表達：話術裡一定要有「您的偏好 → 這支酒的哪個特點 → 所以適合」這條線。",
-    ai:"下一步先補強 AI 判斷：拿到任何建議，先回頭逐條檢查顧客條件，再決定要不要接受。"
-  }[w.k];
-  return advice;
-}
-function showReview(){
-  $("review").disabled = true;
-  $("rev").innerHTML = `
-    <hr class="rule">
-    <h3>六關重點回顧</h3>
-    <table>
-      <tr><th>關卡</th><th>你真正學到的事</th></tr>
-      <tr><td>1</td><td>先看結構（酒體／酸度／單寧），再看香氣。結構決定這支酒服務得了誰。</td></tr>
-      <tr><td>2</td><td>顧客沒說的，不要自己加。每一句話都要能翻譯成一個酒款條件。</td></tr>
-      <tr><td>3</td><td>搭配要有理由：香氣呼應、酸度切油脂、單寧與油脂平衡。</td></tr>
-      <tr><td>4</td><td>推薦不是報酒名，是把顧客的偏好和酒的特點連起來說給他聽。</td></tr>
-      <tr><td>5</td><td>AI 給的資訊可能全對，推薦仍然可能錯。要檢查的是條件，不是語氣。</td></tr>
-      <tr><td>6</td><td>真實情境常有兩位需求相反的顧客，你要找的是交集。</td></tr>
-    </table>
-    <p class="model">所以，結論不是「牛排＝卡本內．蘇維濃」，而是：先了解顧客，再分析料理與葡萄酒的風味和結構，最後提出有證據、有邏輯、能被顧客理解的個人化推薦。</p>`;
-}
-
-
-/* =========================================================
    首頁：檢視玩家排名
    ========================================================= */
-function localBoard(){
-  return playerRows().filter(r=>r.finished).map(function(r){
-    const ab = r.abilities || [];
-    return {
-      name:r.account, score:r.best || r.exp || 0, time:r.elapsed || 0,
-      flavor:(ab[0]||{}).v || 0, pairing:(ab[1]||{}).v || 0, guest:(ab[2]||{}).v || 0,
-      at:r.finishedAt || r.updated || 0
-    };
-  });
-}
+function localBoard(){ return boardFromRecords(playerRows()); }
 function openRanking(){
   if(document.getElementById("ovRank")) return;
   const ov = document.createElement("div");
@@ -2827,12 +2826,14 @@ async function submitAndRenderBoard(score){
     score: Math.round(score*10)/10,
     time: state.elapsed,
     flavor: ab[0].v, pairing: ab[1].v, guest: ab[2].v,
-    at: Date.now()
+    at: state.finishedAt || Date.now(),
+    run: (allPlayers()[state.name] || {}).plays || 1,
+    runs: (allPlayers()[state.name] || {}).plays || 1
   };
   if(CLOUD.configured()){
     pushCloud(allPlayers()[state.name] || {account:state.name, exp:me.score, updated:Date.now()});
     CLOUD.board().then(function(rows){
-      if(rows && rows.length) renderBoard(rows, {at:me.at, name:me.name}, "cloud");
+      if(rows && rows.length) renderBoard(rows, me, "cloud");
       else renderBoard([me], me, "cloud");
     }).catch(function(){ renderBoard([me], me, "local"); });
     return;
@@ -2857,11 +2858,11 @@ async function submitAndRenderBoard(score){
 }
 function renderBoard(list, me, mode, container){
   const tabs = [
-    {k:"score",  label:"🥇 總分",   val:r=>fmt(r.score)+" 分", cmp:(a,b)=> b.score-a.score || a.time-b.time},
-    {k:"flavor", label:"🍇 風味",   val:r=>r.flavor,            cmp:(a,b)=> b.flavor-a.flavor},
-    {k:"pairing",label:"🍽️ 搭配",  val:r=>r.pairing,           cmp:(a,b)=> b.pairing-a.pairing},
-    {k:"guest",  label:"👤 顧客",   val:r=>r.guest,             cmp:(a,b)=> b.guest-a.guest},
-    {k:"time",   label:"⚡ 最快",   val:r=>mmss(r.time),        cmp:(a,b)=> a.time-b.time}
+    {k:"score",  label:"🥇 總分",   val:r=>fmt(r.score)+" 分", cmp:(a,b)=> b.score-a.score || (a.at||0)-(b.at||0)},
+    {k:"flavor", label:"🍇 風味",   val:r=>r.flavor,            cmp:(a,b)=> b.flavor-a.flavor || (a.at||0)-(b.at||0)},
+    {k:"pairing",label:"🍽️ 搭配",  val:r=>r.pairing,           cmp:(a,b)=> b.pairing-a.pairing || (a.at||0)-(b.at||0)},
+    {k:"guest",  label:"👤 顧客",   val:r=>r.guest,             cmp:(a,b)=> b.guest-a.guest || (a.at||0)-(b.at||0)},
+    {k:"time",   label:"⚡ 最快",   val:r=>mmss(r.time),        cmp:(a,b)=> a.time-b.time || (a.at||0)-(b.at||0)}
   ];
   const wrap = container || $("boardWrap");
   if(!wrap) return;
@@ -2873,7 +2874,7 @@ function renderBoard(list, me, mode, container){
       <div class="blist"></div>
     </div>
     <p class="note" style="margin-top:8px">${
-      mode==="cloud"  ? "排名來自雲端，全班不同裝置的成績都會匯集在這裡。" :
+      mode==="cloud"  ? "排名來自雲端，全班不同裝置的成績都會匯集在這裡。每一次完成都會保留成獨立紀錄，同分時先完成的排在前面。" :
       mode==="shared" ? "排行榜與同一份遊戲的其他挑戰者共用，你的名字與成績其他人看得到。" :
       mode==="local"  ? "目前顯示這台裝置上已完成挑戰的紀錄。" :
                         "目前是本機模式（離線開啟），成績只留在這一次遊戲中。"}</p>`;
@@ -2882,7 +2883,9 @@ function renderBoard(list, me, mode, container){
     const rows = list.slice().sort(t.cmp).slice(0,10);
     wrap.querySelector(".blist").innerHTML = rows.length
       ? '<ul class="board-list">'+rows.map((r,k)=>
-          '<li class="'+((r.at===me.at || (me.name && r.name===me.name))?"me":"")+'"><span class="pos">'+(k+1)+'</span><span class="nm">'+esc(r.name)+'</span><span class="vv">'+esc(String(t.val(r)))+'</span></li>').join("")+'</ul>'
+          '<li class="'+((me && r.at && r.at===me.at)?"me":"")+'"><span class="pos">'+(k+1)+'</span><span class="nm">'+
+            esc(r.name) + (r.runs>1 ? ' <span class="note">第 '+r.run+' 次</span>' : '') +
+            '</span><span class="vv">'+esc(String(t.val(r)))+'</span></li>').join("")+'</ul>'
       : '<p class="empty">還沒有人上榜，你是第一個。</p>';
   };
   draw(0);
