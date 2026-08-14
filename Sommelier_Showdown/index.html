@@ -1152,40 +1152,93 @@ const TEACHER_HASH = "fc41215593bc8b1a9b5d5fbfedabdc77731dd2c027d3038d908438704f
    ========================================================= */
 const STT = {
   Rec: window.SpeechRecognition || window.webkitSpeechRecognition || null,
-  rec:null, btn:null, field:null, base:"",
+  rec:null, btn:null, field:null,
+  base:"", finalText:"", interim:"", session:0,
+
   supported(){ return !!this.Rec; },
-  stop(){ if(this.rec){ try{ this.rec.stop(); }catch(e){} } },
+
+  /* 合併兩段辨識結果，避免 Chrome 重述整句造成疊字 */
+  merge(a, b){
+    if(!a) return b || "";
+    if(!b) return a;
+    if(b.indexOf(a) === 0) return b;          // 新的一段包含舊的整段（重述）
+    if(a.indexOf(b) >= 0) return a;           // 新的一段已經在舊文字裡
+    const max = Math.min(a.length, b.length);
+    for(let k = max; k > 0; k--){             // 找頭尾最大重疊
+      if(a.slice(-k) === b.slice(0, k)) return a + b.slice(k);
+    }
+    return a + b;
+  },
+
+  stop(){
+    this.session++;                            // 讓舊辨識器的事件失效
+    if(this.rec){ try{ this.rec.stop(); }catch(e){} }
+    this.reset();
+  },
+
   start(field, btn){
     if(!this.supported()) return;
-    if(this.rec){ this.stop(); if(this.btn===btn){ return; } }
-    const self=this;
+    if(this.rec) this.stop();
+    const self = this;
+    const id = ++this.session;
     const r = new this.Rec();
-    r.lang="zh-TW"; r.interimResults=true; r.continuous=true; r.maxAlternatives=1;
-    this.rec=r; this.btn=btn; this.field=field;
-    this.base = field.value ? field.value.replace(/\s+$/,"") + " " : "";
+    r.lang = "zh-TW";
+    r.continuous = true;
+    r.interimResults = true;
+    r.maxAlternatives = 1;
+
+    this.rec = r; this.btn = btn; this.field = field;
+    const cur = field.value || "";
+    this.base = cur ? (cur.replace(/\s+$/,"") + " ") : "";
+    this.finalText = ""; this.interim = "";
     btn.classList.add("rec");
     btn.innerHTML = "● 收音中，再按一次結束";
+
     r.onresult = function(ev){
-      let out="";
-      for(let i=0;i<ev.results.length;i++) out += ev.results[i][0].transcript;
-      field.value = (self.base + out).slice(0, field.maxLength>0 ? field.maxLength : 100000);
-      field.dispatchEvent(new Event("input",{bubbles:true}));
+      if(id !== self.session) return;          // 忽略上一個辨識器殘留的事件
+      for(let i = ev.resultIndex; i < ev.results.length; i++){
+        const res = ev.results[i];
+        const t = (res[0] && res[0].transcript ? res[0].transcript : "").trim();
+        if(!t) continue;
+        if(res.isFinal){
+          self.finalText = self.merge(self.finalText, t);
+          self.interim = "";
+        } else {
+          self.interim = t;
+        }
+      }
+      const shown = self.interim ? self.merge(self.finalText, self.interim) : self.finalText;
+      let out = self.base + shown;
+      if(field.maxLength > 0) out = out.slice(0, field.maxLength);
+      field.value = out;
+      field.dispatchEvent(new Event("input", {bubbles:true}));
     };
     r.onerror = function(ev){
+      if(id !== self.session) return;
+      const hint = btn.parentNode ? btn.parentNode.querySelector(".mic-hint") : null;
+      if(hint) hint.textContent =
+        ev.error === "not-allowed" ? "瀏覽器沒有取得麥克風權限，請允許後再試。" :
+        ev.error === "no-speech"   ? "沒有聽到聲音，可以再按一次試試。" :
+        ev.error === "network"     ? "語音辨識需要連上網路（辨識在雲端進行）。" :
+                                     "語音辨識中斷了，可以再按一次。";
+      self.session++;
       self.reset();
-      const hint = btn.parentNode.querySelector(".mic-hint");
-      if(hint) hint.textContent = ev.error==="not-allowed"
-        ? "瀏覽器沒有取得麥克風權限，請允許後再試。"
-        : "語音辨識中斷了，可以再按一次。";
     };
-    r.onend = function(){ self.reset(); };
-    try{ r.start(); }catch(e){ this.reset(); }
+    r.onend = function(){
+      if(id !== self.session) return;          // 已被新的辨識器取代就不處理
+      self.session++;
+      self.reset();
+    };
+    try{ r.start(); }catch(e){ this.session++; this.reset(); }
   },
+
   reset(){
     if(this.btn){ this.btn.classList.remove("rec"); this.btn.innerHTML = "🎤 語音輸入"; }
-    this.rec=null; this.btn=null; this.field=null;
+    this.rec = null; this.btn = null; this.field = null;
+    this.finalText = ""; this.interim = "";
   }
 };
+
 /* 每次畫面更新後，自動替新出現的輸入欄位加上麥克風 */
 function enhanceInputs(root){
   (root||document).querySelectorAll("textarea, input[type=text]").forEach(function(el){
