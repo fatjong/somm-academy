@@ -1984,6 +1984,115 @@ const STORE={
     if(this.cloud){try{await window.storage.delete(key,!!shared)}catch(e){}}
   }
 };
+const GS_CODE = [
+"// 酒單挑戰王 - 雲端排行榜後端（Google Apps Script）",
+"// 用法：Google 試算表 → 擴充功能 → Apps Script → 貼上本檔 → 部署為網頁應用程式",
+"//       執行身分：我　／　誰可以存取：所有人　→ 複製 /exec 網址貼回遊戲",
+"",
+"const SHEET_NAME = 'records';",
+"const HEAD = ['rid','name','sid','mode','total','boss','correct','wf','reason','rec','time','finishAt','uploadAt'];",
+"",
+"function sheet_() {",
+"  const ss = SpreadsheetApp.getActiveSpreadsheet();",
+"  let sh = ss.getSheetByName(SHEET_NAME);",
+"  if (!sh) { sh = ss.insertSheet(SHEET_NAME); sh.appendRow(HEAD); }",
+"  if (sh.getLastRow() === 0) sh.appendRow(HEAD);",
+"  return sh;",
+"}",
+"",
+"function json_(obj) {",
+"  return ContentService.createTextOutput(JSON.stringify(obj))",
+"    .setMimeType(ContentService.MimeType.JSON);",
+"}",
+"",
+"function doGet(e) {",
+"  const sh = sheet_();",
+"  const rows = sh.getDataRange().getValues();",
+"  const out = [];",
+"  for (let i = 1; i < rows.length; i++) {",
+"    const r = rows[i];",
+"    if (!r[0]) continue;",
+"    out.push({",
+"      rid: String(r[0]), name: String(r[1]), sid: String(r[2]), mode: String(r[3]),",
+"      total: Number(r[4]) || 0, boss: Number(r[5]) || 0, correct: Number(r[6]) || 0,",
+"      wf: Number(r[7]) || 0, reason: Number(r[8]) || 0, rec: Number(r[9]) || 0,",
+"      time: Number(r[10]) || 0, finishAt: Number(r[11]) || 0, at: Number(r[11]) || 0",
+"    });",
+"  }",
+"  return json_({ ok: true, records: out });",
+"}",
+"",
+"function doPost(e) {",
+"  try {",
+"    const body = JSON.parse(e.postData.contents);",
+"    const sh = sheet_();",
+"    if (body.action === 'clear') {",
+"      sh.clear(); sh.appendRow(HEAD);",
+"      return json_({ ok: true, cleared: true });",
+"    }",
+"    const r = body.record || {};",
+"    if (!r.rid) return json_({ ok: false, error: 'missing rid' });",
+"    // 同一 rid 只寫一次，避免重複上傳",
+"    const ids = sh.getRange(1, 1, Math.max(sh.getLastRow(), 1), 1).getValues().map(function (x) { return String(x[0]); });",
+"    if (ids.indexOf(String(r.rid)) >= 0) return json_({ ok: true, duplicated: true });",
+"    sh.appendRow([r.rid, r.name, r.sid, r.mode, r.total, r.boss, r.correct,",
+"                  r.wf, r.reason, r.rec, r.time, r.finishAt || Date.now(), Date.now()]);",
+"    return json_({ ok: true });",
+"  } catch (err) {",
+"    return json_({ ok: false, error: String(err) });",
+"  }",
+"}"
+].join('\n');
+const EP_KEY='wpc:endpoint:v1';        /* 本機：教師自訂的 Google Apps Script 網址 */
+const EP_DEFAULT='https://script.google.com/macros/s/AKfycby_1JeTgLGe5McpPXy10wZO7S3NfItmOw6qZgdbca9w728wCFLKq6mG4fO122Ibo6aY/exec';  /* 內建預設端點，學生端免設定 */
+
+/* ==================================================================
+   雲端排行榜：Google Apps Script ＋ Google 試算表
+   破關紀錄採「附加」方式，同一位玩家可保留多筆，不會互相覆蓋。
+   ================================================================== */
+const CLOUD={
+  url:'',ready:false,cache:null,cacheAt:0,
+  async init(){const saved=await STORE.get(EP_KEY,false);
+    this.url=(saved===''?'':(saved||EP_DEFAULT));this.ready=!!this.url;return this.ready},
+  async setUrl(u){this.url=(u||'').trim();this.ready=!!this.url;await STORE.set(EP_KEY,this.url,false)},
+  /* 用 text/plain 送出可避免 CORS 預檢，Apps Script 才收得到 */
+  async push(rec){
+    if(!this.ready)return{ok:false,why:'未設定雲端網址'};
+    try{
+      const r=await fetch(this.url,{method:'POST',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:JSON.stringify({action:'add',record:rec})});
+      const j=await r.json();
+      this.cache=null;
+      return j&&j.ok?{ok:true}:{ok:false,why:(j&&j.error)||'伺服器回應異常'};
+    }catch(e){return{ok:false,why:'無法連線（'+e.message+'）'}}
+  },
+  async list(force){
+    if(!this.ready)return null;
+    if(!force&&this.cache&&Date.now()-this.cacheAt<15000)return this.cache;
+    try{
+      const r=await fetch(this.url+(this.url.includes('?')?'&':'?')+'action=list&t='+Date.now());
+      const j=await r.json();
+      if(j&&j.ok&&Array.isArray(j.records)){this.cache=j.records;this.cacheAt=Date.now();return j.records}
+      return null;
+    }catch(e){return null}
+  },
+  async clear(){
+    if(!this.ready)return{ok:false};
+    try{
+      const r=await fetch(this.url,{method:'POST',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:JSON.stringify({action:'clear'})});
+      const j=await r.json();this.cache=null;return{ok:!!(j&&j.ok)};
+    }catch(e){return{ok:false}}
+  }
+};
+/* 排名規則：總分高者在前；同分則先完成者在前 */
+function rankCmp(a,b){
+  const A=(a.total||0)+(a.boss||0), B=(b.total||0)+(b.boss||0);
+  if(B!==A)return B-A;
+  return (a.finishAt||a.at||0)-(b.finishAt||b.at||0);
+}
 async function loadBoard(){return (await STORE.get(LB_KEY,true))||[]}
 async function writeBoard(list){await STORE.set(LB_KEY,list,true)}
 async function loadRecs(){return (await STORE.get(REC_KEY,true))||[]}
@@ -2033,39 +2142,54 @@ async function autosave(done){
   await writeRecs(list);
 }
 async function saveScore(t){
-  const rec={name:S.who||((S.sid||'')+S.name),sid:S.sid,mode:modeLabel(S.mode),
+  const now=Date.now();
+  const rec={
+    rid:(S.sessionId||S.who)+'-'+now,          /* 每筆破關紀錄唯一，永不覆蓋 */
+    name:S.who||((S.sid||'')+S.name),sid:S.sid,mode:modeLabel(S.mode),
     total:t.total,boss:S.boss||0,correct:t.correct,
-    wf:t.wf,rec:t.rec,reason:t.reason,time:S.elapsed,at:Date.now()};
+    wf:t.wf,rec:t.rec,reason:t.reason,time:S.elapsed,
+    at:now,finishAt:now};
   const list=await loadBoard();
-  const prev=list.findIndex(x=>x.name===rec.name);
-  if(prev>=0){if(sortKey(rec)<sortKey(list[prev]))list[prev]=rec}else list.push(rec);
+  if(!list.some(x=>x.rid===rec.rid))list.push(rec);   /* 附加，同一玩家可多筆 */
   await writeBoard(list);
-  AUDIO.sfx('streak');guardOff();await autosave(true);toast('已存入排行榜');
+  AUDIO.sfx('streak');guardOff();await autosave(true);
+  await CLOUD.init();
+  if(CLOUD.ready){
+    toast('上傳雲端排行榜中⋯⋯');
+    const r=await CLOUD.push(rec);
+    toast(r.ok?'已上傳雲端排行榜':'雲端上傳失敗：'+r.why+'（已存在本機）');
+  }else toast('已存入本機排行榜');
   renderBoard(rec);
 }
-function sortKey(r){return[-(r.total+r.boss),-r.rec,-r.wf,r.time].join('|')}
-function cmp(a,b){
-  const A=a.total+a.boss,B=b.total+b.boss;
-  if(B!==A)return B-A;
-  if(b.rec!==a.rec)return b.rec-a.rec;
-  if(b.wf!==a.wf)return b.wf-a.wf;
-  return a.time-b.time;
-}
+const cmp=rankCmp;
 async function renderBoard(me){
-  const list=(await loadBoard()).slice().sort(cmp);
+  await CLOUD.init();
+  const local=(await loadBoard())||[];
+  let list=local.slice(),src='本機紀錄';
+  if(CLOUD.ready){
+    const cloud=await CLOUD.list(true);
+    if(cloud){
+      const seen=new Set(cloud.map(r=>r.rid));
+      list=cloud.concat(local.filter(r=>!seen.has(r.rid)));
+      src='雲端共用排行榜';
+    }else src='雲端連線失敗，顯示本機紀錄';
+  }
+  list=list.slice().sort(cmp);
   const medal=i=>['🥇','🥈','🥉'][i]||(i+1);
   $('#boardbody').innerHTML=`<div class="card">
     <p class="eyebrow">Wine Pairing Leaderboard</p>
     <h2>🏆 排行榜</h2>
-    <p class="muted">決勝順位：總分 → 個人化推薦 → 風味分析 → 完成時間。本遊戲的核心不是速度，而是專業侍酒能力。</p>
-    ${list.length?`<table><thead><tr><th>排名</th><th>學號姓名</th><th>模式</th><th style="text-align:right">總分</th><th style="text-align:right">Boss</th><th style="text-align:right">正確率</th><th style="text-align:right">風味</th><th style="text-align:right">個人化</th><th style="text-align:right">時間</th></tr></thead>
-    <tbody>${list.map((r,i)=>`<tr class="${me&&r.name===me.name&&r.at===me.at?'me':''}">
+    <p class="muted">排名規則：總分高者在前；同分則先完成者在前。每次破關都是一筆獨立紀錄，重玩不會覆蓋舊成績。<br>
+    資料來源：<b style="color:var(--gold)">${esc(src)}</b></p>
+    ${list.length?`<table><thead><tr><th>排名</th><th>學號姓名</th><th>模式</th><th style="text-align:right">總分</th><th style="text-align:right">Boss</th><th style="text-align:right">正確率</th><th style="text-align:right">風味</th><th style="text-align:right">個人化</th><th style="text-align:right">用時</th><th style="text-align:right">完成於</th></tr></thead>
+    <tbody>${list.map((r,i)=>`<tr class="${me&&r.rid===me.rid?'me':''}">
       <td class="rank">${medal(i)}</td><td>${esc(r.name)}</td><td class="muted">${esc(r.mode||'—')}</td>
       <td class="num" style="color:var(--gold)">${r.total}</td><td class="num">${r.boss||'—'}</td>
       <td class="num">${r.correct*10}%</td><td class="num">${r.wf}/20</td><td class="num">${r.rec}/20</td>
-      <td class="num">${String(Math.floor(r.time/60)).padStart(2,'0')}:${String(r.time%60).padStart(2,'0')}</td></tr>`).join('')}</tbody></table>`
+      <td class="num">${String(Math.floor(r.time/60)).padStart(2,'0')}:${String(r.time%60).padStart(2,'0')}</td>
+      <td class="num muted">${fmtTime(r.finishAt||r.at)}</td></tr>`).join('')}</tbody></table>`
     :'<p class="muted" style="margin-top:14px">還沒有人上榜。完成 10 題後按「存進排行榜」，你就是第一位。</p>'}
-    <p class="notice">排行榜資料會分享給所有使用這份遊戲的同學，全班可以看到彼此的成績；請只填課堂用的名字或代號。</p>
+    <p class="notice">排行榜會顯示全班成績。設定雲端後，不同電腦與瀏覽器的紀錄會匯總在一起；未設定時僅顯示本機紀錄。</p>
     <div class="row center" style="margin-top:16px">
       <button class="btn ghost" id="bd-back">回到首頁</button></div></div>`;
   show('#s-board');
@@ -2143,6 +2267,23 @@ async function renderTeacher(){
       <button class="btn ghost" id="tc-clearboard">只清空排行榜</button>
       <button class="btn ghost" id="tc-clear">清空所有紀錄</button>
     </div>
+    <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px">
+      <p class="eyebrow">雲端排行榜設定</p>
+      <p class="muted" style="font-size:12.5px">遊戲已內建預設的雲端網址，學生端不需任何設定即可上傳成績。若要改用自己的試算表，可在此覆寫；清空欄位後儲存則會停用雲端、只用本機紀錄。</p>
+      <input type="text" id="epinput" placeholder="https://script.google.com/macros/s/AKfy.../exec" autocomplete="off" style="margin-top:8px">
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="ep-save" style="padding:9px 18px;font-size:14px">儲存並測試連線</button>
+        <button class="btn ghost" id="ep-reset" style="padding:9px 18px;font-size:14px">還原預設</button>
+        <button class="btn ghost" id="ep-code" style="padding:9px 18px;font-size:14px">取得 Apps Script 程式碼</button>
+        <span class="muted" id="epstat" style="flex:1 1 180px;font-size:12.5px"></span>
+      </div>
+      <div id="epcode" style="display:none;margin-top:12px">
+        <p class="muted" style="font-size:12.5px">步驟：Google 試算表 → 擴充功能 → Apps Script → 貼上下列程式碼 → 部署為「網頁應用程式」→ 執行身分選「我」、存取權選「所有人」→ 複製網址貼回上方欄位。</p>
+        <textarea readonly id="epsrc" style="min-height:200px;font-family:ui-monospace,monospace;font-size:11.5px"></textarea>
+        <div class="row" style="margin-top:8px"><button class="btn ghost" id="ep-copy" style="padding:9px 18px;font-size:14px">複製程式碼</button></div>
+      </div>
+    </div>
+
     <div id="csvbox" style="display:none;margin-top:14px">
       <p class="muted" style="font-size:12.5px">若瀏覽器擋下下載，可直接全選複製下方內容，貼進 Excel 或 Google 試算表（貼上後選「資料 → 分割資料行 → 逗號」）。</p>
       <textarea readonly style="min-height:150px;font-family:ui-monospace,monospace;font-size:12px"></textarea>
@@ -2189,6 +2330,7 @@ async function renderTeacher(){
       5. 遊戲進行中誤按瀏覽器返回鍵或關閉分頁時，會先跳出確認視窗並暫停倒數，不會直接遺失作答。<br>
       6. 每答完一題會自動存檔。學生若中途離開，下次開啟遊戲首頁會出現「找到未完成的紀錄」，可接著原本那一題繼續作答。<br>
       7. 教師後台可查看所有場次的登入時間、模式、進度與各項得分，並可匯出 CSV 進行登分。密碼請另行保管，不寫在說明中。<br>
+      8. 雲端排行榜：在教師後台設定 Google Apps Script 網址後，全班不同電腦的破關成績會匯總到同一份 Google 試算表。每次破關都是獨立一筆，同一位學生可累積多筆成績，重玩不會覆蓋。排名依總分由高到低，同分則先完成者在前。
       4. 課後請學生截圖個人能力雷達圖，作為學習歷程檔案。</p></details>
 
     <div class="row center" style="margin-top:16px"><button class="btn ghost" id="tc-back">回到首頁</button></div></div>`;
@@ -2207,8 +2349,39 @@ async function renderTeacher(){
     const ok=await askConfirm('清空全部紀錄？','所有學生的作答紀錄、排行榜與未完成進度都會刪除，此動作無法復原。建議先匯出 CSV 備份。','全部清空');
     if(!ok)return;
     await writeRecs([]);await writeBoard([]);await clearSession();
-    toast('已清空所有紀錄');renderTeacher();
+    if(CLOUD.ready){const c=await CLOUD.clear();toast(c.ok?'已清空本機與雲端紀錄':'本機已清空，雲端清除失敗')}
+    else toast('已清空所有紀錄');
+    renderTeacher();
   };
+  await CLOUD.init();
+  const epi=$('#epinput'),eps=$('#epstat');
+  if(epi){
+    epi.value=CLOUD.url||'';
+    eps.textContent=CLOUD.ready?(CLOUD.url===EP_DEFAULT?'使用內建雲端網址':'使用自訂雲端網址'):'雲端已停用，成績僅存本機';
+    $('#ep-reset').onclick=async()=>{
+      AUDIO.sfx('tap');await STORE.del(EP_KEY,false);await CLOUD.init();
+      epi.value=CLOUD.url;eps.textContent='已還原為內建雲端網址';
+    };
+    $('#ep-save').onclick=async()=>{
+      AUDIO.sfx('click');
+      await CLOUD.setUrl(epi.value);
+      if(!CLOUD.ready){eps.textContent='已清除設定，改用本機紀錄';return}
+      eps.textContent='測試連線中⋯⋯';
+      const r=await CLOUD.list(true);
+      eps.innerHTML=r?('✅ 連線成功，雲端目前有 '+r.length+' 筆紀錄')
+        :'<b style="color:var(--red)">連線失敗</b>　請確認已部署為網頁應用程式，且存取權設為「所有人」';
+    };
+    $('#ep-code').onclick=()=>{
+      AUDIO.sfx('tap');
+      const box=$('#epcode');
+      box.style.display=box.style.display==='none'?'':'none';
+      $('#epsrc').value=GS_CODE;
+    };
+    $('#ep-copy').onclick=()=>{
+      const ta=$('#epsrc');ta.select();
+      try{document.execCommand('copy');toast('已複製 Apps Script 程式碼')}catch(e){toast('請手動全選複製')}
+    };
+  }
   const cp=$('#tc-copy');
   if(cp)cp.onclick=()=>{
     const ta=$('#csvbox textarea');ta.select();
