@@ -400,6 +400,7 @@ input[type=text]::placeholder{color:rgba(156,146,133,.7)}
     <div id="rk-list"></div>
     <div class="corner"></div>
   </div>
+  <button class="btn ghost" id="rk-toggle">★ 只看每人最佳</button>
   <button class="btn ghost" id="rk-refresh">↻ 重新整理</button>
   <button class="btn ghost" id="rk-diag">🔧 連線診斷</button>
   <button class="btn ghost" id="rk-back">回酒窖</button>
@@ -1490,7 +1491,10 @@ function finish(){
   if(!S.best[cur]||pct>S.best[cur])S.best[cur]=pct;   /* 解鎖以最佳成績為準，重做不會被鎖回去 */
   save();
   clearTimeout(syncTimer);
-  LB.submit(err=>{ if(!err){toast("成績已同步排行榜"); setTimeout(()=>LB.top(()=>{}),400);} },true);
+  LB.submit(err=>{ if(!err)toast("進度已同步"); },true);
+  if(pass)setTimeout(()=>LB.record(cur,(er,d)=>{
+    if(!er&&d&&d.created)toast(`破關紀錄已登錄　★ ${totalStars()}`);
+  }),900);
   $("res-badge").innerHTML=badge(cur,pass);
   $("res-eyebrow").textContent=pass?"SKILL UNLOCKED":"NOT YET";
   $("res-score").textContent=pct;
@@ -1649,6 +1653,18 @@ const LB={
         this.msg=this.state; if(typeof paintVoicePanel==="function")paintVoicePanel(); }
     });
   },
+  /* 通關時登錄一筆永久紀錄；只新增不覆寫，重玩失手不會洗掉舊成績 */
+  record(level,cb){
+    if(!S.name||!S.uid){ if(cb)cb("no player"); return; }
+    const qs="action=record&uid="+encodeURIComponent(S.uid)
+      +"&name="+encodeURIComponent(S.name)
+      +"&stars="+totalStars()+"&passed="+doneCount()
+      +"&level="+(level||0)+"&ts="+Date.now();
+    this.request(qs,(err,d)=>{
+      if(!err&&d&&d.created){ this.fetchedAt=0; setTimeout(()=>this.top(()=>{}),500); }
+      if(cb)cb(err,d);
+    });
+  },
   top(cb,tries){
     tries=tries||0;
     this.request("action=top&limit=20",(err,d)=>{
@@ -1803,6 +1819,7 @@ function fmtTime(ms){
 
 function renderRank(){
   setScene(0);show("rank");
+  $("rk-toggle").textContent=S.rkBest?"☰ 顯示全部紀錄":"★ 只看每人最佳";
   const list=$("rk-list");
   const mine=`<div class="rank-row me"><div class="no">我</div>
       <div class="who"><b>${S.name||"未命名"}</b><span>更新 ${fmtTime(S.achievedAt)}</span></div>
@@ -1820,11 +1837,19 @@ function renderRank(){
     list.innerHTML=mine;
   }
   function paintRows(rows){
-    list.innerHTML=rows.map((r,i)=>{
+    let view=rows;
+    const cnt={};rows.forEach(r=>{const k=r.uid||r.name;cnt[k]=(cnt[k]||0)+1;});
+    if(S.rkBest){                       /* 只看每人最佳：已排序，同代碼取第一筆 */
+      const seen={};view=[];
+      rows.forEach(r=>{const k=r.uid||r.name;if(!seen[k]){seen[k]=1;view.push(r);}});
+    }
+    list.innerHTML=view.map((r,i)=>{
       const me=(r.uid&&r.uid===S.uid)||r.name===S.name;
+      const n=cnt[r.uid||r.name]||1;
       return `<div class="rank-row ${me?"me":""} ${i===0?"top1":""}" style="animation-delay:${i*.02}s">
         <div class="no">${i+1}</div>
-        <div class="who"><b>${String(r.name||"").replace(/[<>]/g,"")}</b><span>更新 ${fmtTime(r.ts)}</span></div>
+        <div class="who"><b>${String(r.name||"").replace(/[<>]/g,"")}</b>
+          <span>${fmtTime(r.ts)} 完成${(S.rkBest&&n>1)?`　·　共 ${n} 筆`:""}</span></div>
         <div class="st">★ ${r.stars}</div></div>`;}).join("")||mine;
   }
   const draw=(err,rows)=>{
@@ -1833,7 +1858,8 @@ function renderRank(){
         ? "<span style=\"color:var(--hud)\">伺服器要求登入</span><br>請到 Apps Script →「管理部署作業」→ 將「具有存取權的使用者」改為「知道連結的任何人」→ 版本選「新版本」→ 部署。"
         : "無法連線（"+err+"）　·　"+LB.state+"，僅顯示本機成績。";
       return;}
-    $("rk-sum").textContent=`全球 ${rows.length} 位學員　·　依星星數排名，同分以先達成者為先`;
+    const ppl=Object.keys(rows.reduce((a,r)=>{a[r.uid||r.name]=1;return a;},{})).length;
+    $("rk-sum").textContent=`${ppl} 位學員　·　${rows.length} 筆破關紀錄　·　星星多者在前，同分先完成者在前`;
     paintRows(rows);
   };
   LB.top((err,rows)=>{
@@ -1846,6 +1872,11 @@ function renderRank(){
 $("btn-rank").onclick=renderRank;
 $("rk-back").onclick=renderMap;
 $("rk-refresh").onclick=()=>{LB.submit(()=>renderRank());};
+$("rk-toggle").onclick=()=>{
+  S.rkBest=!S.rkBest;save();
+  $("rk-toggle").textContent=S.rkBest?"☰ 顯示全部紀錄":"★ 只看每人最佳";
+  renderRank();
+};
 $("rk-diag").onclick=()=>{
   $("rk-sum").textContent="診斷中，請稍候……";
   LB.diagnose(txt=>{ $("rk-sum").innerHTML=txt.replace(/\n/g,"<br>"); });
@@ -1878,7 +1909,7 @@ $("lb-push").onclick=()=>{
 };
 
 /* ---------- 版本 ---------- */
-const APP_VER="1.0.1", APP_BUILD="2026.08";
+const APP_VER="1.1.0", APP_BUILD="2026.08";
 (function(){const el=$("app-ver"); if(!el)return;
   const bridge=(window.AndroidNet&&window.AndroidNet.get)?"NET-OK":(window.AndroidTTS?"NET-MISSING":"WEB");
   el.textContent=`VERSION ${APP_VER}　·　BUILD ${APP_BUILD}　·　${bridge}`;})();
