@@ -296,6 +296,10 @@ b.weak{color:#ff6f5e}
 .course-card .done{color:var(--ok);font-size:11.5px}
 .note-list li{margin:6px 0}
 
+
+.cloud-chip{font-size:12px;color:var(--ink-dim);border:1px solid var(--line);border-radius:999px;padding:4px 12px;text-align:center}
+.cloud-chip.on{color:#8fd6a8;border-color:rgba(143,214,168,.5)}
+
 @media (max-width:860px){
   .home-wrap{grid-template-columns:1fr;gap:26px;padding:30px 18px}
   .grid2,.grid3{grid-template-columns:1fr}
@@ -370,6 +374,7 @@ b.weak{color:#ff6f5e}
         </div>
       </div>
 
+      <div class="cloud-chip" id="cloudChip">本機模式</div>
       <button class="btn ghost sm" id="btnTeacher">教師後台</button>
     </div>
   </div>
@@ -387,7 +392,7 @@ b.weak{color:#ff6f5e}
       </div>
       <div class="bgm-box">
         <button class="btn sm" id="btnBgm">播放 BGM</button>
-        <input type="range" id="bgmVol" min="0" max="100" value="45" style="width:96px" aria-label="音量">
+        <input type="range" id="bgmVol" min="0" max="100" value="15" style="width:96px" aria-label="音量"><button class="btn sm ghost" id="btnBgmFile" title="改用自己的音樂檔">選擇音樂檔</button><input type="file" id="bgmFile" accept="audio/*" class="hidden">
         <audio id="bgm" loop preload="none" src="assets/bgm.mp3"></audio>
       </div>
     </div>
@@ -856,6 +861,45 @@ const COURSES=[
      {q:'提供替代方案的主要好處是？',o:['讓顧客有選擇權、展現專業','拉高客單價','縮短服務時間','避免被問問題'],a:0,e:'主推＋替代是標準做法。'}]},
 ];
 
+/* ══════════ SHA-256（教師密碼只存雜湊，原始碼看不到明碼） ══════════ */
+function sha256hex(msg){
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const bytes=[]; for(const ch of unescape(encodeURIComponent(msg))) bytes.push(ch.charCodeAt(0));
+  const bitLen=bytes.length*8; bytes.push(0x80);
+  while(bytes.length%64!==56) bytes.push(0);
+  for(let i=7;i>=0;i--) bytes.push((bitLen/Math.pow(2,i*8))&0xff);
+  const rr=(x,n)=>(x>>>n)|(x<<(32-n));
+  for(let i=0;i<bytes.length;i+=64){
+    const wds=new Array(64);
+    for(let j=0;j<16;j++) wds[j]=(bytes[i+j*4]<<24)|(bytes[i+j*4+1]<<16)|(bytes[i+j*4+2]<<8)|bytes[i+j*4+3];
+    for(let j=16;j<64;j++){
+      const s0=rr(wds[j-15],7)^rr(wds[j-15],18)^(wds[j-15]>>>3);
+      const s1=rr(wds[j-2],17)^rr(wds[j-2],19)^(wds[j-2]>>>10);
+      wds[j]=(wds[j-16]+s0+wds[j-7]+s1)|0;
+    }
+    let [a,b,c,d,e,f,g,h]=H;
+    for(let j=0;j<64;j++){
+      const S1=rr(e,6)^rr(e,11)^rr(e,25), ch=(e&f)^(~e&g);
+      const t1=(h+S1+ch+K[j]+wds[j])|0;
+      const S0=rr(a,2)^rr(a,13)^rr(a,22), maj=(a&b)^(a&c)^(b&c);
+      const t2=(S0+maj)|0;
+      h=g; g=f; f=e; e=(d+t1)|0; d=c; c=b; b=a; a=(t1+t2)|0;
+    }
+    H=[(H[0]+a)|0,(H[1]+b)|0,(H[2]+c)|0,(H[3]+d)|0,(H[4]+e)|0,(H[5]+f)|0,(H[6]+g)|0,(H[7]+h)|0];
+  }
+  return H.map(x=>((x>>>0).toString(16).padStart(8,'0'))).join('');
+}
+const PW_SALT='somm-rpg-2026';
+const pwHash=s=>sha256hex(PW_SALT+'|'+s);
+
 /* ══════════ 音效（Web Audio 即時合成，不需外部檔案） ══════════ */
 const Sfx={
   ctx:null,master:null,ready:false,
@@ -915,12 +959,110 @@ addEventListener('pointerdown',e=>{
 },true);
 
 /* ══════════════════════════════════════════════════════════════
+   Firebase 雲端層（線上時啟用，離線／file:// 自動退回本機模式）
+   ══════════════════════════════════════════════════════════════ */
+const Cloud={on:false,auth:null,db:null,M:null,uid:null,reason:'尚未連線'};
+const FB_VER='https://www.gstatic.com/firebasejs/10.12.5/';
+async function initCloud(){
+  const cfg=DB.config.firebase;
+  if(!cfg||!cfg.apiKey){ Cloud.reason='教師後台尚未填入 Firebase 設定'; return false; }
+  if(location.protocol==='file:'){ Cloud.reason='目前用 file:// 開啟，Firebase 需要 http(s) 或 Hosting'; return false; }
+  try{
+    const [appM,authM,fsM]=await Promise.all([
+      import(FB_VER+'firebase-app.js'), import(FB_VER+'firebase-auth.js'), import(FB_VER+'firebase-firestore.js')]);
+    const app=appM.initializeApp(cfg);
+    Cloud.M={auth:authM,fs:fsM};
+    Cloud.auth=authM.getAuth(app); Cloud.db=fsM.getFirestore(app);
+    Cloud.on=true; Cloud.reason='已連線 '+cfg.projectId;
+    return true;
+  }catch(e){ Cloud.reason='連線失敗：'+(e&&e.message||e); return false; }
+}
+function cloudStatus(){
+  const el=document.getElementById('cloudChip'); if(!el) return;
+  el.textContent=(Cloud.on?'☁ 雲端連線：':'💾 本機模式：')+Cloud.reason;
+  el.className='cloud-chip'+(Cloud.on?' on':'');
+}
+const FB_ERR={'auth/email-already-in-use':'這個 E-mail 已經註冊過了，一組信箱只能開一個玩家帳號。',
+  'auth/invalid-email':'E-mail 格式不正確。','auth/weak-password':'密碼強度不足，請至少 6 碼。',
+  'auth/invalid-credential':'E-mail 或密碼不正確。','auth/wrong-password':'密碼不正確。',
+  'auth/user-not-found':'查不到這個帳號。','auth/too-many-requests':'嘗試次數過多，請稍後再試。',
+  'auth/network-request-failed':'網路連線失敗。','auth/unauthorized-domain':'這個網域還沒加入 Firebase 的「已授權網域」。'};
+const fbMsg=e=>FB_ERR[e&&e.code]||((e&&e.message)||'發生未知錯誤');
+
+async function cloudRegister(acc,em,bd,pw){
+  const {createUserWithEmailAndPassword,sendEmailVerification,signOut}=Cloud.M.auth;
+  const {doc,setDoc}=Cloud.M.fs;
+  const cred=await createUserWithEmailAndPassword(Cloud.auth,em,pw);
+  await sendEmailVerification(cred.user);
+  await setDoc(doc(Cloud.db,'users',cred.user.uid),
+    {acc,email:em,bd,created:Date.now(),save:newSave(em,acc)});
+  await signOut(Cloud.auth);
+}
+async function cloudLogin(em,pw){
+  const {signInWithEmailAndPassword,sendEmailVerification,signOut}=Cloud.M.auth;
+  const {doc,getDoc,setDoc}=Cloud.M.fs;
+  const cred=await signInWithEmailAndPassword(Cloud.auth,em,pw);
+  if(!cred.user.emailVerified){
+    try{ await sendEmailVerification(cred.user); }catch(e){}
+    await signOut(Cloud.auth);
+    throw {code:'unverified',message:'這個帳號還沒完成 E-mail 驗證，已重新寄出驗證信。'};
+  }
+  Cloud.uid=cred.user.uid;
+  const ref=doc(Cloud.db,'users',Cloud.uid);
+  const snap=await getDoc(ref);
+  let data=snap.exists()?snap.data():null;
+  if(!data){ data={acc:em.split('@')[0],email:em,bd:'',created:Date.now(),save:newSave(em,em.split('@')[0])};
+    await setDoc(ref,data); }
+  return {acc:data.acc,email:em,bd:data.bd,verified:true,created:data.created,save:data.save||newSave(em,data.acc)};
+}
+async function cloudLoadUser(user){
+  const {doc,getDoc,setDoc}=Cloud.M.fs;
+  Cloud.uid=user.uid;
+  const ref=doc(Cloud.db,'users',Cloud.uid), snap=await getDoc(ref);
+  let data=snap.exists()?snap.data():null;
+  if(!data){ data={acc:user.email.split('@')[0],email:user.email,bd:'',created:Date.now(),save:newSave(user.email,user.email.split('@')[0])};
+    await setDoc(ref,data); }
+  return {acc:data.acc,email:user.email,bd:data.bd,verified:true,created:data.created,save:data.save||newSave(user.email,data.acc)};
+}
+async function cloudLogout(){
+  if(!Cloud.on||!Cloud.auth) return;
+  try{ await Cloud.M.auth.signOut(Cloud.auth); }catch(e){}
+  Cloud.uid=null;
+}
+async function cloudSaveGame(){
+  if(!Cloud.on||!Cloud.uid||!S) return;
+  const {doc,setDoc}=Cloud.M.fs;
+  try{ await setDoc(doc(Cloud.db,'users',Cloud.uid),{acc:S.acc,email:S.email,save:S,updated:Date.now()},{merge:true}); }catch(e){}
+}
+async function cloudScore(rec){
+  if(!Cloud.on||!Cloud.uid) return;
+  const {collection,addDoc}=Cloud.M.fs;
+  try{ await addDoc(collection(Cloud.db,'scores'),{...rec,uid:Cloud.uid}); }catch(e){}
+}
+async function cloudFetchScores(){
+  if(!Cloud.on) return null;
+  const {collection,getDocs,query,orderBy,limit}=Cloud.M.fs;
+  try{ const q=query(collection(Cloud.db,'scores'),orderBy('ts','desc'),limit(300));
+    const snap=await getDocs(q); return snap.docs.map(d=>d.data());
+  }catch(e){ return null; }
+}
+async function cloudReset(em){
+  const {sendPasswordResetEmail}=Cloud.M.auth;
+  await sendPasswordResetEmail(Cloud.auth,em);
+}
+
+/* ══════════════════════════════════════════════════════════════
    核心：儲存、帳號、時間、HUD、村莊、店家
    ══════════════════════════════════════════════════════════════ */
 const DB={users:{},scores:[],session:{email:'',auto:false},config:{
-  teacherPw:'lhu-somm-2024', passScoreOffset:0, unlockAll:false, maxSameAccount:3,
+  // 教師密碼只保存 SHA-256 雜湊（加鹽），原始碼中看不到明碼
+  teacherHash:'dbbe6a9b8547c723fed02a49e55a56e1d55c66ab1e2e9923a28872df9ce7b4f3',
+  passScoreOffset:0, unlockAll:false, maxSameAccount:3, timeScale:15,
   smtpFrom:'fatjong@gmail.com',
-  firebase:{apiKey:'',authDomain:'',projectId:'',storageBucket:'',messagingSenderId:'',appId:''},
+  firebase:{apiKey:'AIzaSyBhYz5jnekLWS7mqvFdrwwi2my36tf86RA',authDomain:'sommelier-rpg-game.firebaseapp.com',
+    projectId:'sommelier-rpg-game',storageBucket:'sommelier-rpg-game.firebasestorage.app',
+    messagingSenderId:'193016942498',appId:'1:193016942498:web:a8257c5ee47fd00adfecfb',
+    measurementId:'G-9P776657F8'},
   azureTts:{key:'',region:'eastasia',voice:'zh-TW-HsiaoChenNeural',rate:1.1,pitch:1.1}
 }};
 let S=null;                      // 目前玩家存檔
@@ -939,7 +1081,13 @@ const Store={
   },
 };
 async function persist(){ await Store.set('somm:db',DB); }
-async function loadDB(){ const d=await Store.get('somm:db'); if(d){ Object.assign(DB,d); DB.config=Object.assign({},{teacherPw:'lhu-somm-2024'},d.config||{}); } }
+async function loadDB(){
+  const def=JSON.parse(JSON.stringify(DB.config));
+  const d=await Store.get('somm:db');
+  if(d){ Object.assign(DB,d); DB.config=Object.assign({},def,d.config||{});
+    DB.config.firebase=Object.assign({},def.firebase,d.config&&d.config.firebase||{});
+    delete DB.config.teacherPw; }
+}
 
 /* ── UI 小工具 ─────────────────────────────────────────────── */
 function toast(msg,kind=''){ const t=document.createElement('div'); t.className='toast '+kind; t.textContent=msg;
@@ -1006,14 +1154,26 @@ $('#btnReg').onclick=async()=>{
   if(!bd) return err.textContent='請填寫生日。';
   if(pw.length<6) return err.textContent='密碼至少 6 碼。';
   if(pw!==pw2) return err.textContent='兩次密碼不一致。';
+  if(Cloud.on){
+    err.textContent='建立帳號中…';
+    try{
+      await cloudRegister(acc,em,bd,pw);
+      err.textContent='';
+      modal('<h3>驗證信已寄出</h3><p>已寄到 <b>'+em+'</b>，請點開信中的連結完成驗證，再回來登入。</p>'+
+        '<p class="small muted">沒收到的話看一下垃圾郵件匣，寄件者是 noreply@'+DB.config.firebase.authDomain+'。</p>'+
+        '<button class="btn primary" onclick="closeModals()">好</button>');
+      $('#tabLogin').click(); $('#liEmail').value=em;
+    }catch(e){ err.textContent=fbMsg(e); }
+    return;
+  }
   if(DB.users[em]) return err.textContent='這組 E-mail 已經註冊過了。一組信箱只能開通一個玩家，請改用其他信箱。';
   if(Object.values(DB.users).some(u=>u.acc===acc)) return err.textContent='這個玩家帳號已經有人使用。';
   const code=String(Math.floor(100000+Math.random()*900000));
   DB.users[em]={acc,email:em,bd,pw:hash(pw),verified:false,code,created:Date.now(),save:newSave(em,acc)};
   await persist();
   $('#paneReg').classList.add('hidden'); $('#paneVerify').classList.remove('hidden');
-  $('#vfHint').innerHTML='驗證信已寄往 <b>'+em+'</b>（正式版由 '+DB.config.smtpFrom+' 的 SMTP 寄出）。'+
-    '<br>單機示範版直接顯示驗證碼：<b style="color:var(--gold);font-size:17px">'+code+'</b>';
+  $('#vfHint').innerHTML='目前是本機模式（沒有連上 Firebase），驗證碼直接顯示在畫面上：'+
+    '<b style="color:var(--gold);font-size:17px">'+code+'</b>';
   $('#vfCode').value='';
 };
 $('#btnVerify').onclick=async()=>{
@@ -1027,6 +1187,19 @@ $('#btnLogin').onclick=async()=>{
   const em=$('#liEmail').value.trim().toLowerCase(), pw=$('#liPw').value, err=$('#liErr'); err.textContent='';
   const f=loginFail[em]||{n:0,until:0};
   if(f.until>Date.now()) return err.textContent='密碼錯誤次數過多，請稍後再試。';
+  if(Cloud.on){
+    err.textContent='登入中…';
+    try{
+      const u=await cloudLogin(em,pw);
+      loginFail[em]={n:0,until:0}; err.textContent='';
+      DB.session={email:em,auto:$('#liRemember').checked}; await persist();
+      enterGame(u);
+    }catch(e){
+      f.n++; if(f.n>=3){ f.until=Date.now()+180000; f.n=0; } loginFail[em]=f;
+      err.textContent=fbMsg(e);
+    }
+    return;
+  }
   const u=DB.users[em];
   if(!u||u.pw!==hash(pw)){ f.n++; if(f.n>=3){ f.until=Date.now()+180000; f.n=0; } loginFail[em]=f;
     return err.textContent='E-mail 或密碼不正確。'; }
@@ -1035,25 +1208,45 @@ $('#btnLogin').onclick=async()=>{
   DB.session={email:em,auto:$('#liRemember').checked}; await persist();
   enterGame(u);
 };
-$('#btnForgot').onclick=()=>{
-  const em=$('#liEmail').value.trim().toLowerCase(), u=DB.users[em];
-  modal('<h3>忘記密碼</h3><p class="small muted">正式版會由 '+DB.config.smtpFrom+' 的 SMTP 寄出重設連結，需搭配 Firebase Auth 的 sendPasswordResetEmail。</p>'+
-    (u?'<p>單機示範版重設碼：<b style="color:var(--gold)">'+u.code+'</b>，請以此碼作為新密碼登入。</p>':'<p class="err">請先在上方填入已註冊的 E-mail。</p>')+
-    (u?'<button class="btn primary" id="doReset">把密碼重設為上面這組</button>':''));
-  const b=$('#doReset'); if(b) b.onclick=async()=>{ u.pw=hash(u.code); await persist(); closeModals(); toast('密碼已重設，請用重設碼登入','good'); };
+$('#btnForgot').onclick=async()=>{
+  const em=$('#liEmail').value.trim().toLowerCase();
+  if(Cloud.on){
+    if(!em) return toast('請先在上方填入註冊時用的 E-mail','bad');
+    try{ await cloudReset(em);
+      modal('<h3>重設信已寄出</h3><p>請到 <b>'+em+'</b> 收信，點開連結設定新密碼。</p>'+
+        '<button class="btn primary" onclick="closeModals()">好</button>');
+    }catch(e){ toast(fbMsg(e),'bad'); }
+    return;
+  }
+  const u=DB.users[em];
+  modal('<h3>忘記密碼</h3><p class="small muted">目前是本機模式。連上 Firebase 後，這裡會直接寄出官方的密碼重設信。</p>'+
+    (u?'<p>本機重設碼：<b style="color:var(--gold)">'+u.code+'</b></p><button class="btn primary" id="doReset">把密碼重設為上面這組</button>'
+      :'<p class="err">請先在上方填入已註冊的 E-mail。</p>'));
+  const b=$('#doReset'); if(b) b.onclick=async()=>{ u.pw=hash(u.code); await persist(); closeModals(); toast('密碼已重設','good'); };
 };
 $('#btnDemo').onclick=async()=>{
-  const em='demo@lhu.edu.tw';
-  if(!DB.users[em]) DB.users[em]={acc:'A1234567890王小明',email:em,bd:'2005-01-01',pw:hash('demo123'),verified:true,code:'000000',created:Date.now(),save:newSave(em,'A1234567890王小明')};
-  DB.session={email:em,auto:$('#liRemember').checked}; await persist(); enterGame(DB.users[em]);
+  const em='guest@local';
+  if(!DB.users[em]) DB.users[em]={acc:'G0000000000試玩玩家',email:em,bd:'',pw:'',verified:true,code:'',guest:true,
+    created:Date.now(),save:newSave(em,'G0000000000試玩玩家')};
+  DB.users[em].guest=true;
+  DB.session={email:em,auto:false}; await persist();
+  toast('試玩模式：進度只留在這台裝置，不會上傳成績。');
+  enterGame(DB.users[em]);
 };
 $('#btnLogout').onclick=async()=>{ await saveGame(); stopClock(); S=null;
   DB.session.auto=false; await persist();
+  if(typeof Cloud!=='undefined'&&Cloud.on) await cloudLogout();
   show('home'); $('#liEmail').value=DB.session.email||''; $('#liPw').value=''; $('#liPw').focus(); };
 
-async function saveGame(){ if(!S) return; const u=DB.users[S.email]; if(u){ u.save=S; await persist(); } }
+async function saveGame(){
+  if(!S) return;
+  const u=DB.users[S.email]; if(u){ u.save=S; }
+  await persist();
+  if(Cloud.on&&Cloud.uid) cloudSaveGame();
+}
 
 function enterGame(u){
+  if(!DB.users[u.email]) DB.users[u.email]=u; else DB.users[u.email].save=u.save||DB.users[u.email].save;
   S=u.save||newSave(u.email,u.acc); S.email=u.email; S.acc=u.acc;
   if(!S.avatar) S.avatar=null;
   const hasProgress = S.avatar && (S.day>1||S.level>1||S.exp>0||S.history.length>0);
@@ -1078,8 +1271,9 @@ document.addEventListener('visibilitychange',()=>{
 function stopClock(){ if(clockTimer) clearInterval(clockTimer); clockTimer=null; }
 function tick(){
   if(!S) return;
-  const step=(typeof RS!=='undefined'&&RS&&RS.inService&&!RS.ended) ? 1/60   // 服務客人時＝真實時間
-            : inShift ? 10/60 : 1;
+  const scale=(typeof RS!=='undefined'&&RS&&RS.inService&&!RS.ended) ? 1     // 服務客人時＝真實時間
+             : (DB.config.timeScale||15);                                     // 其餘時間預設 15 倍
+  const step=scale/60;                                                        // 每秒推進的遊戲分鐘
   S.minutes+=step;
   S.stamina=clamp(S.stamina-(2.8/60)*step,0,100);
   if(S.minutes>=1440){ S.minutes-=1440; S.day++; S.weekday=(S.weekday+1)%7; payInterest(); }
@@ -2027,7 +2221,9 @@ function endShift(){
   const pass=RS.served>=lv.tables && avg>=(lv.pass+DB.config.passScoreOffset);
   let robbed=false;
   if(S.cash>96000){ robbed=true; S.cash=0; }
-  DB.scores.push({acc:S.acc,email:S.email,level:lv.no,rest:RS.rest.name,tables:RS.served,avg:+avg.toFixed(1),pass,day:S.day,ts:Date.now()});
+  const rec={acc:S.acc,email:S.email,level:lv.no,rest:RS.rest.name,tables:RS.served,avg:+avg.toFixed(1),pass,day:S.day,ts:Date.now()};
+  DB.scores.push(rec);
+  if(typeof Cloud!=='undefined'&&Cloud.on&&!(DB.users[S.email]&&DB.users[S.email].guest)) cloudScore(rec);
   S.scoreLog.push({level:lv.no,avg:+avg.toFixed(1),served:RS.served,pass});
   S.history.push('第'+S.day+'天：'+RS.rest.name+'第'+lv.sub+'關，服務 '+RS.served+' 桌，平均 '+avg.toFixed(1)+' 分'+(pass?'（通過）':'（未達標）'));
   if(pass && S.level===lv.no){ S.cleared.push(lv.no); S.level=Math.min(20,S.level+1); }
@@ -2508,7 +2704,7 @@ $('#btnTeacher').onclick=()=>{
     '<button class="btn primary" id="tgo" '+(locked?'disabled':'')+'>進入後台</button>');
   const go=()=>{
     if(teacherLockUntil>Date.now()) return;
-    if($('#tpw',m).value===DB.config.teacherPw){ teacherFail=0; m.remove(); openTeacher(); }
+    if(pwHash($('#tpw',m).value)===DB.config.teacherHash){ teacherFail=0; m.remove(); openTeacher(); }
     else { teacherFail++; $('#tperr',m).textContent='密碼不正確。';
       if(teacherFail>=3){ teacherLockUntil=Date.now()+180000; teacherFail=0;
         $('#tpw',m).disabled=true; $('#tgo',m).disabled=true; $('#tperr',m).textContent=''; } }
@@ -2528,9 +2724,10 @@ function drawTeacher(){
   $$('[data-tab]').forEach(b=>b.onclick=()=>{ tTab=b.dataset.tab; drawTeacher(); });
   ({scores:tScores,levels:tLevels,bank:tBank,users:tUsers,cfg:tCfg}[tTab])();
 }
-function tScores(){
-  const rows=DB.scores.slice().reverse();
-  $('#tBody').innerHTML='<div class="list-row"><span class="muted small">共 '+rows.length+' 筆上班紀錄</span>'+
+async function tScores(){
+  let rows=DB.scores.slice().reverse(), src='本機';
+  if(Cloud.on){ const cl=await cloudFetchScores(); if(cl){ rows=cl; src='雲端 Firestore'; } }
+  $('#tBody').innerHTML='<div class="list-row"><span class="muted small">資料來源：'+src+'　共 '+rows.length+' 筆上班紀錄</span>'+
     '<div><button class="btn sm" id="csv">匯出 CSV</button> <button class="btn sm" id="clr">清空紀錄</button></div></div>'+
     '<div class="inv-scroll"><table class="data"><tr><th>玩家帳號</th><th>關卡</th><th>餐廳</th><th>桌數</th><th>平均分</th><th>結果</th><th>遊戲天數</th></tr>'+
     (rows.length?rows.map(r=>'<tr><td>'+r.acc+'</td><td>'+r.level+'</td><td>'+r.rest+'</td><td>'+r.tables+'</td><td>'+r.avg+'</td><td>'+(r.pass?'通過':'未達標')+'</td><td>'+r.day+'</td></tr>').join('')
@@ -2581,12 +2778,15 @@ function tUsers(){
 function tCfg(){
   const f=DB.config.firebase, a=DB.config.azureTts;
   $('#tBody').innerHTML='<h4>教師密碼</h4>'+
-   '<label class="field" style="max-width:320px"><span>教師專屬密碼</span><input id="c_pw" value="'+DB.config.teacherPw+'"></label>'+
+   '<p class="small muted">密碼只以加鹽 SHA-256 雜湊保存，網頁原始碼裡看不到明碼。忘記密碼時只能用下方欄位重設（需先能進入後台），或清除瀏覽器資料回到預設值。</p>'+
+   '<div class="grid2"><label class="field"><span>新密碼（留白表示不改）</span><input id="c_pw" type="password"></label>'+
+   '<label class="field"><span>再次輸入新密碼</span><input id="c_pw2" type="password"></label></div>'+
    '<hr class="rule"><h4>Firebase 對接</h4>'+
    '<p class="small muted">正式部署時，帳號驗證（Auth）、玩家存檔與成績（Firestore）、素材（Storage）都由這組設定接管。填好後按儲存，下方會產生可直接貼進專案的初始化程式碼。</p>'+
    '<div class="grid2">'+Object.keys(f).map(k=>'<label class="field"><span>'+k+'</span><input id="fb_'+k+'" value="'+(f[k]||'')+'"></label>').join('')+'</div>'+
    '<label class="field"><span>忘記密碼／驗證信寄件者（SMTP）</span><input id="c_smtp" value="'+DB.config.smtpFrom+'"></label>'+
-   '<label class="field" style="max-width:220px"><span>同帳號同時在線上限</span><input id="c_max" type="number" min="1" max="10" value="'+DB.config.maxSameAccount+'"></label>'+
+   '<div class="grid2"><label class="field"><span>同帳號同時在線上限</span><input id="c_max" type="number" min="1" max="10" value="'+DB.config.maxSameAccount+'"></label>'+
+   '<label class="field"><span>時間加速倍率（服務客人時固定為 1 倍）</span><input id="c_ts" type="number" min="1" max="60" value="'+(DB.config.timeScale||15)+'"></label></div>'+
    '<hr class="rule"><h4>語音（題目解說）</h4>'+
    '<div class="grid3"><label class="field"><span>Azure 語音金鑰</span><input id="az_key" value="'+(a.key||'')+'"></label>'+
    '<label class="field"><span>區域</span><input id="az_region" value="'+a.region+'"></label>'+
@@ -2598,9 +2798,13 @@ function tCfg(){
     JSON.stringify(DB.config.firebase,null,2)+';\nconst app = initializeApp(firebaseConfig);\nexport const auth = getAuth(app);\nexport const db = getFirestore(app);';
   $('#fbCode').textContent=code();
   $('#c_save').onclick=async()=>{
-    DB.config.teacherPw=$('#c_pw').value||DB.config.teacherPw;
+    const np=$('#c_pw').value, np2=$('#c_pw2').value;
+    if(np){ if(np.length<4) return toast('密碼至少 4 碼','bad');
+      if(np!==np2) return toast('兩次密碼不一致','bad');
+      DB.config.teacherHash=pwHash(np); toast('教師密碼已更新','good'); }
     Object.keys(f).forEach(k=>DB.config.firebase[k]=$('#fb_'+k).value.trim());
     DB.config.smtpFrom=$('#c_smtp').value.trim(); DB.config.maxSameAccount=clamp(+$('#c_max').value||3,1,10);
+    DB.config.timeScale=clamp(+$('#c_ts').value||15,1,60);
     DB.config.azureTts={key:$('#az_key').value.trim(),region:$('#az_region').value.trim(),voice:$('#az_voice').value.trim(),rate:1.1,pitch:1.1};
     await persist(); toast('設定已儲存','good'); $('#fbCode').textContent=code();
   };
@@ -2620,10 +2824,35 @@ function tCfg(){
   }
   if(DB.config.customEvents) DB.config.customEvents.forEach(e=>EVENTS.push(e));
   const bgm=$('#bgm');
-  $('#btnBgm').onclick=()=>{ if(bgm.paused){ bgm.volume=$('#bgmVol').value/100; bgm.play().then(()=>$('#btnBgm').textContent='暫停 BGM')
-      .catch(()=>toast('找不到 assets/bgm.mp3，請把音樂檔放在同一層的 assets 資料夾。','bad')); }
+  bgm.volume=0.15;
+  let bgmReady=true;
+  bgm.addEventListener('error',()=>{ bgmReady=false; });
+  const playBgm=()=>bgm.play().then(()=>{ $('#btnBgm').textContent='暫停 BGM'; })
+    .catch(()=>{ bgmReady=false;
+      toast('找不到或無法播放 assets/bgm.mp3。把音樂檔放在 index.html 旁的 assets 資料夾並命名為 bgm.mp3，或按「選擇音樂檔」。','bad'); });
+  $('#btnBgm').onclick=()=>{ if(bgm.paused){ bgm.volume=$('#bgmVol').value/100; playBgm(); }
     else { bgm.pause(); $('#btnBgm').textContent='播放 BGM'; } };
   $('#bgmVol').oninput=()=>bgm.volume=$('#bgmVol').value/100;
+  $('#btnBgmFile').onclick=()=>$('#bgmFile').click();
+  $('#bgmFile').onchange=e=>{ const f=e.target.files[0]; if(!f) return;
+    bgm.src=URL.createObjectURL(f); bgm.volume=$('#bgmVol').value/100; bgmReady=true;
+    bgm.play().then(()=>$('#btnBgm').textContent='暫停 BGM').catch(()=>{}); };
+  // 瀏覽器規定要有互動才能出聲：第一次點畫面時自動試播一次
+  addEventListener('pointerdown',function once(){ removeEventListener('pointerdown',once);
+    if(bgmReady&&bgm.paused){ bgm.volume=$('#bgmVol').value/100;
+      bgm.play().then(()=>$('#btnBgm').textContent='暫停 BGM').catch(()=>{}); } });
+  // Firebase
+  initCloud().then(ok=>{
+    cloudStatus();
+    if(!ok) return;
+    // 已登入且勾過「記住我」→ 直接接續（Firebase 自己保存了登入狀態）
+    Cloud.M.auth.onAuthStateChanged(Cloud.auth, async user=>{
+      if(!user||S) return;
+      if(!user.emailVerified){ return; }
+      if(!(DB.session&&DB.session.auto)){ $('#liEmail').value=user.email; return; }
+      try{ const u=await cloudLoadUser(user); enterGame(u); }catch(e){}
+    });
+  });
   if(window.speechSynthesis) speechSynthesis.getVoices();
   $('#btnSfx').onclick=()=>{ if(!S) return; S.sfx=(S.sfx===false); $('#btnSfx').textContent=S.sfx?'🔊':'🔇';
     if(S.sfx) Sfx.play('ding'); saveGame(); toast(S.sfx?'音效已開啟':'音效已關閉'); };
