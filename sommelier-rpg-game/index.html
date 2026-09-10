@@ -299,6 +299,8 @@ b.weak{color:#ff6f5e}
 
 .cloud-chip{font-size:12px;color:var(--ink-dim);border:1px solid var(--line);border-radius:999px;padding:4px 12px;text-align:center}
 .cloud-chip.on{color:#8fd6a8;border-color:rgba(143,214,168,.5)}
+.cloud-chip.warn{color:#ffb08a;border-color:rgba(255,140,110,.55)}
+.cloud-chip{cursor:pointer}
 
 @media (max-width:860px){
   .home-wrap{grid-template-columns:1fr;gap:26px;padding:30px 18px}
@@ -375,6 +377,7 @@ b.weak{color:#ff6f5e}
       </div>
 
       <div class="cloud-chip" id="cloudChip">本機模式</div>
+      <div class="cloud-chip" id="storeChip">資料狀態</div>
       <button class="btn ghost sm" id="btnTeacher">教師後台</button>
     </div>
   </div>
@@ -959,97 +962,113 @@ addEventListener('pointerdown',e=>{
 },true);
 
 /* ══════════════════════════════════════════════════════════════
-   Firebase 雲端層（線上時啟用，離線／file:// 自動退回本機模式）
+   Firebase 雲端層 — 改用 compat SDK 以 <script> 載入，
+   並準備多個 CDN 後備，避免某些瀏覽器（如 Edge）擋掉 ESM 動態載入
    ══════════════════════════════════════════════════════════════ */
-const Cloud={on:false,auth:null,db:null,M:null,uid:null,reason:'尚未連線'};
-const FB_VER='https://www.gstatic.com/firebasejs/10.12.5/';
+const Cloud={on:false,auth:null,db:null,uid:null,reason:'尚未連線',trying:false};
+const FB_SETS=[
+  {n:'gstatic 10.12.5',base:'https://www.gstatic.com/firebasejs/10.12.5/',
+   files:['firebase-app-compat.js','firebase-auth-compat.js','firebase-firestore-compat.js']},
+  {n:'gstatic 8.10.1',base:'https://www.gstatic.com/firebasejs/8.10.1/',
+   files:['firebase-app.js','firebase-auth.js','firebase-firestore.js']},
+  {n:'jsdelivr 8.10.1',base:'https://cdn.jsdelivr.net/npm/firebase@8.10.1/',
+   files:['firebase-app.js','firebase-auth.js','firebase-firestore.js']},
+  {n:'unpkg 8.10.1',base:'https://unpkg.com/firebase@8.10.1/',
+   files:['firebase-app.js','firebase-auth.js','firebase-firestore.js']},
+];
+function loadScript(src){
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script'); s.src=src; s.async=false;
+    s.onload=()=>res(src); s.onerror=()=>rej(new Error('無法載入 '+src));
+    document.head.appendChild(s);
+    setTimeout(()=>rej(new Error('載入逾時 '+src)),12000);
+  });
+}
 async function initCloud(){
-  const cfg=DB.config.firebase;
-  if(!cfg||!cfg.apiKey){ Cloud.reason='教師後台尚未填入 Firebase 設定'; return false; }
-  if(location.protocol==='file:'){ Cloud.reason='目前用 file:// 開啟，Firebase 需要 http(s) 或 Hosting'; return false; }
+  if(Cloud.trying) return Cloud.on; Cloud.trying=true;
   try{
-    const [appM,authM,fsM]=await Promise.all([
-      import(FB_VER+'firebase-app.js'), import(FB_VER+'firebase-auth.js'), import(FB_VER+'firebase-firestore.js')]);
-    const app=appM.initializeApp(cfg);
-    Cloud.M={auth:authM,fs:fsM};
-    Cloud.auth=authM.getAuth(app); Cloud.db=fsM.getFirestore(app);
-    Cloud.on=true; Cloud.reason='已連線 '+cfg.projectId;
+    const cfg=DB.config.firebase;
+    if(!cfg||!cfg.apiKey){ Cloud.reason='教師後台尚未填入 Firebase 設定'; return false; }
+    if(location.protocol==='file:'){
+      Cloud.reason='用 file:// 開啟，Firebase 不接受此來源（請改用 localhost 或 Hosting）'; return false; }
+    if(!window.firebase){
+      let lastErr=null;
+      for(const set of FB_SETS){
+        try{ for(const f of set.files) await loadScript(set.base+f);
+          if(window.firebase){ Cloud.via=set.n; break; }
+        }catch(e){ lastErr=e; }
+      }
+      if(!window.firebase){ Cloud.reason='SDK 載入被擋：'+(lastErr&&lastErr.message||'未知原因')+
+        '（Edge 可暫時關閉「追蹤防護」或改用其他網路）'; return false; }
+    }
+    if(!firebase.apps.length) firebase.initializeApp(cfg);
+    Cloud.auth=firebase.auth(); Cloud.db=firebase.firestore();
+    try{ await Cloud.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
+    Cloud.on=true; Cloud.reason='已連線 '+cfg.projectId+'（'+(Cloud.via||'已載入')+'）';
     return true;
   }catch(e){ Cloud.reason='連線失敗：'+(e&&e.message||e); return false; }
+  finally{ Cloud.trying=false; }
 }
 function cloudStatus(){
   const el=document.getElementById('cloudChip'); if(!el) return;
   el.textContent=(Cloud.on?'☁ 雲端連線：':'💾 本機模式：')+Cloud.reason;
   el.className='cloud-chip'+(Cloud.on?' on':'');
+  el.title='點一下可重新嘗試連線';
+  el.onclick=async()=>{ if(Cloud.on) return; el.textContent='☁ 連線中…';
+    await initCloud(); cloudStatus(); toast(Cloud.on?'已連上 Firebase':'仍無法連線：'+Cloud.reason,Cloud.on?'good':'bad'); };
 }
 const FB_ERR={'auth/email-already-in-use':'這個 E-mail 已經註冊過了，一組信箱只能開一個玩家帳號。',
   'auth/invalid-email':'E-mail 格式不正確。','auth/weak-password':'密碼強度不足，請至少 6 碼。',
   'auth/invalid-credential':'E-mail 或密碼不正確。','auth/wrong-password':'密碼不正確。',
   'auth/user-not-found':'查不到這個帳號。','auth/too-many-requests':'嘗試次數過多，請稍後再試。',
-  'auth/network-request-failed':'網路連線失敗。','auth/unauthorized-domain':'這個網域還沒加入 Firebase 的「已授權網域」。'};
+  'auth/network-request-failed':'網路連線失敗，請確認網路或瀏覽器沒有擋掉 Google 服務。',
+  'auth/operation-not-allowed':'Firebase 主控台還沒開啟「電子郵件/密碼」登入方式。',
+  'auth/unauthorized-domain':'這個網域還沒加入 Firebase 的「已授權網域」。'};
 const fbMsg=e=>FB_ERR[e&&e.code]||((e&&e.message)||'發生未知錯誤');
 
 async function cloudRegister(acc,em,bd,pw){
-  const {createUserWithEmailAndPassword,sendEmailVerification,signOut}=Cloud.M.auth;
-  const {doc,setDoc}=Cloud.M.fs;
-  const cred=await createUserWithEmailAndPassword(Cloud.auth,em,pw);
-  await sendEmailVerification(cred.user);
-  await setDoc(doc(Cloud.db,'users',cred.user.uid),
-    {acc,email:em,bd,created:Date.now(),save:newSave(em,acc)});
-  await signOut(Cloud.auth);
+  const cred=await Cloud.auth.createUserWithEmailAndPassword(em,pw);
+  await cred.user.sendEmailVerification();
+  await Cloud.db.collection('users').doc(cred.user.uid).set({acc,email:em,bd,created:Date.now(),save:newSave(em,acc)});
+  await Cloud.auth.signOut();
 }
 async function cloudLogin(em,pw){
-  const {signInWithEmailAndPassword,sendEmailVerification,signOut}=Cloud.M.auth;
-  const {doc,getDoc,setDoc}=Cloud.M.fs;
-  const cred=await signInWithEmailAndPassword(Cloud.auth,em,pw);
+  const cred=await Cloud.auth.signInWithEmailAndPassword(em,pw);
   if(!cred.user.emailVerified){
-    try{ await sendEmailVerification(cred.user); }catch(e){}
-    await signOut(Cloud.auth);
+    try{ await cred.user.sendEmailVerification(); }catch(e){}
+    await Cloud.auth.signOut();
     throw {code:'unverified',message:'這個帳號還沒完成 E-mail 驗證，已重新寄出驗證信。'};
   }
-  Cloud.uid=cred.user.uid;
-  const ref=doc(Cloud.db,'users',Cloud.uid);
-  const snap=await getDoc(ref);
-  let data=snap.exists()?snap.data():null;
-  if(!data){ data={acc:em.split('@')[0],email:em,bd:'',created:Date.now(),save:newSave(em,em.split('@')[0])};
-    await setDoc(ref,data); }
-  return {acc:data.acc,email:em,bd:data.bd,verified:true,created:data.created,save:data.save||newSave(em,data.acc)};
+  return await cloudLoadUser(cred.user);
 }
 async function cloudLoadUser(user){
-  const {doc,getDoc,setDoc}=Cloud.M.fs;
   Cloud.uid=user.uid;
-  const ref=doc(Cloud.db,'users',Cloud.uid), snap=await getDoc(ref);
-  let data=snap.exists()?snap.data():null;
-  if(!data){ data={acc:user.email.split('@')[0],email:user.email,bd:'',created:Date.now(),save:newSave(user.email,user.email.split('@')[0])};
-    await setDoc(ref,data); }
-  return {acc:data.acc,email:user.email,bd:data.bd,verified:true,created:data.created,save:data.save||newSave(user.email,data.acc)};
+  const ref=Cloud.db.collection('users').doc(user.uid);
+  const snap=await ref.get();
+  let data=snap.exists?snap.data():null;
+  if(!data){ const acc=user.email.split('@')[0];
+    data={acc,email:user.email,bd:'',created:Date.now(),save:newSave(user.email,acc)};
+    await ref.set(data); }
+  return {acc:data.acc,email:user.email,bd:data.bd,verified:true,created:data.created,
+          save:data.save||newSave(user.email,data.acc)};
 }
-async function cloudLogout(){
-  if(!Cloud.on||!Cloud.auth) return;
-  try{ await Cloud.M.auth.signOut(Cloud.auth); }catch(e){}
-  Cloud.uid=null;
-}
+async function cloudLogout(){ if(Cloud.on&&Cloud.auth){ try{ await Cloud.auth.signOut(); }catch(e){} } Cloud.uid=null; }
 async function cloudSaveGame(){
   if(!Cloud.on||!Cloud.uid||!S) return;
-  const {doc,setDoc}=Cloud.M.fs;
-  try{ await setDoc(doc(Cloud.db,'users',Cloud.uid),{acc:S.acc,email:S.email,save:S,updated:Date.now()},{merge:true}); }catch(e){}
+  try{ await Cloud.db.collection('users').doc(Cloud.uid)
+    .set({acc:S.acc,email:S.email,save:S,updated:Date.now()},{merge:true}); }catch(e){}
 }
 async function cloudScore(rec){
   if(!Cloud.on||!Cloud.uid) return;
-  const {collection,addDoc}=Cloud.M.fs;
-  try{ await addDoc(collection(Cloud.db,'scores'),{...rec,uid:Cloud.uid}); }catch(e){}
+  try{ await Cloud.db.collection('scores').add({...rec,uid:Cloud.uid}); }catch(e){}
 }
 async function cloudFetchScores(){
   if(!Cloud.on) return null;
-  const {collection,getDocs,query,orderBy,limit}=Cloud.M.fs;
-  try{ const q=query(collection(Cloud.db,'scores'),orderBy('ts','desc'),limit(300));
-    const snap=await getDocs(q); return snap.docs.map(d=>d.data());
+  try{ const snap=await Cloud.db.collection('scores').orderBy('ts','desc').limit(300).get();
+    return snap.docs.map(x=>x.data());
   }catch(e){ return null; }
 }
-async function cloudReset(em){
-  const {sendPasswordResetEmail}=Cloud.M.auth;
-  await sendPasswordResetEmail(Cloud.auth,em);
-}
+async function cloudReset(em){ await Cloud.auth.sendPasswordResetEmail(em); }
 
 /* ══════════════════════════════════════════════════════════════
    核心：儲存、帳號、時間、HUD、村莊、店家
@@ -1070,16 +1089,59 @@ let loginFail={}, teacherFail=0, teacherLockUntil=0;
 
 /* ── 儲存層：優先用 window.storage，否則記憶體＋JSON 匯出 ── */
 const Store={
+  mode:'unknown', mem:{},
+  probe(){
+    try{ const k='somm:probe'; localStorage.setItem(k,'1');
+      const ok=localStorage.getItem(k)==='1'; localStorage.removeItem(k);
+      if(ok){ this.mode='local'; return this.mode; } }catch(e){}
+    this.mode='memory'; return this.mode;
+  },
   async get(k){
     try{ if(window.storage){ const r=await window.storage.get(k); if(r) return JSON.parse(r.value); } }catch(e){}
-    try{ const v=localStorage.getItem(k); return v?JSON.parse(v):null; }catch(e){ return null; }
+    if(this.mode==='local'){ try{ const v=localStorage.getItem(k); if(v) return JSON.parse(v); }catch(e){} }
+    return this.mem[k]||null;
   },
   async set(k,v){
+    this.mem[k]=v;
     let ok=false;
     try{ if(window.storage){ await window.storage.set(k,JSON.stringify(v)); ok=true; } }catch(e){}
-    if(!ok){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+    if(!ok&&this.mode==='local'){ try{ localStorage.setItem(k,JSON.stringify(v)); ok=true; }catch(e){ this.mode='memory'; } }
+    return ok;
   },
+  clear(){ try{ localStorage.removeItem('somm:db'); }catch(e){} this.mem={}; },
 };
+function storageStatus(){
+  const el=document.getElementById('storeChip'); if(!el) return;
+  const persistent=(Store.mode==='local'||!!window.storage);
+  const n=Object.keys(DB.users||{}).length;
+  el.textContent=(persistent?'💽 資料保存正常':'⚠ 這個環境無法保存資料')+'　本機帳號 '+n+' 組';
+  el.className='cloud-chip'+(persistent?'':' warn');
+  el.title='點一下可匯出／匯入／清除本機資料';
+  el.onclick=()=>storageMenu(persistent);
+}
+function storageMenu(persistent){
+  modal('<h3>本機資料</h3>'+
+    (persistent?'<p class="small">目前可以正常保存，關掉瀏覽器再打開，帳號與進度都會留著。</p>'
+      :'<p class="err small">這個環境擋掉了瀏覽器儲存（常見於直接用 file:// 雙擊開檔）。'+
+        '註冊的帳號只存在這次開啟的分頁裡，重新整理就會消失。<br>解法：用 <b>localhost</b> 開啟'+
+        '（例如在資料夾執行 <code>python -m http.server</code> 後開 http://localhost:8000），'+
+        '或部署到 Firebase Hosting；也可以先用下面的匯出／匯入功能手動保存。</p>')+
+    '<p class="small muted">目前本機帳號：'+Object.keys(DB.users||{}).map(e=>DB.users[e].acc+'（'+e+'）').join('、')+'</p>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn sm" id="stExp">匯出全部資料</button>'+
+    '<button class="btn sm" id="stImp">匯入資料檔</button>'+
+    '<button class="btn sm ghost" id="stClr">清除本機資料</button>'+
+    '<button class="btn sm" onclick="closeModals()">關上</button></div>');
+  $('#stExp').onclick=()=>{ const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='侍酒村資料備份.json'; a.click(); };
+  $('#stImp').onclick=()=>{ const i=document.createElement('input'); i.type='file'; i.accept='.json';
+    i.onchange=async()=>{ try{ const d=JSON.parse(await i.files[0].text());
+      Object.assign(DB,d); await persist(); closeModals(); storageStatus(); toast('資料已匯入','good'); }
+      catch(e){ toast('檔案格式不正確','bad'); } }; i.click(); };
+  $('#stClr').onclick=async()=>{ if(!confirm('確定清除這台裝置上的所有帳號與進度？')) return;
+    Store.clear(); DB.users={}; DB.scores=[]; DB.session={email:'',auto:false}; await persist();
+    closeModals(); storageStatus(); toast('已清除本機資料'); };
+}
 async function persist(){ await Store.set('somm:db',DB); }
 async function loadDB(){
   const def=JSON.parse(JSON.stringify(DB.config));
@@ -1093,13 +1155,18 @@ async function loadDB(){
 function toast(msg,kind=''){ const t=document.createElement('div'); t.className='toast '+kind; t.textContent=msg;
   $('#toasts').appendChild(t); setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .4s';},3200);
   setTimeout(()=>t.remove(),3700); }
+let fadeGuard=null;
+function clearFade(){ const f=document.getElementById('fader'); if(f) f.classList.remove('on');
+  if(fadeGuard){ clearTimeout(fadeGuard); fadeGuard=null; } }
 function fade(fn,ms){
   const f=document.getElementById('fader');
   if(!f){ fn&&fn(); return; }
   f.classList.add('on');
-  setTimeout(()=>{ try{ fn&&fn(); }finally{ setTimeout(()=>f.classList.remove('on'),40); } },ms||330);
+  if(fadeGuard) clearTimeout(fadeGuard);
+  fadeGuard=setTimeout(clearFade,(ms||330)+2500);          // 保險：最多 2.5 秒後一定恢復
+  setTimeout(()=>{ try{ fn&&fn(); }catch(e){ console.error(e); } finally{ setTimeout(clearFade,40); } },ms||330);
 }
-function show(id){ ['home','charsel','village','place','restaurant','teacher'].forEach(s=>$('#'+s).classList.toggle('hidden',s!==id));
+function show(id){ clearFade(); ['home','charsel','village','place','restaurant','teacher'].forEach(s=>$('#'+s).classList.toggle('hidden',s!==id));
   $('#hud').classList.toggle('hidden', id==='home'||id==='teacher'||id==='charsel');
   if(id!=='village'&&id!=='restaurant'&&typeof World!=='undefined') World.stop(); window.scrollTo(0,0); }
 function modal(html,opt={}){ const back=document.createElement('div'); back.className='modal-back';
@@ -1186,7 +1253,7 @@ $('#btnVerify').onclick=async()=>{
 $('#btnLogin').onclick=async()=>{
   const em=$('#liEmail').value.trim().toLowerCase(), pw=$('#liPw').value, err=$('#liErr'); err.textContent='';
   const f=loginFail[em]||{n:0,until:0};
-  if(f.until>Date.now()) return err.textContent='密碼錯誤次數過多，請稍後再試。';
+  if(f.until>Date.now()) return err.textContent='密碼錯誤次數過多，請等 '+Math.ceil((f.until-Date.now())/60000)+' 分鐘後再試。';
   if(Cloud.on){
     err.textContent='登入中…';
     try{
@@ -1201,8 +1268,14 @@ $('#btnLogin').onclick=async()=>{
     return;
   }
   const u=DB.users[em];
-  if(!u||u.pw!==hash(pw)){ f.n++; if(f.n>=3){ f.until=Date.now()+180000; f.n=0; } loginFail[em]=f;
-    return err.textContent='E-mail 或密碼不正確。'; }
+  if(!u){
+    const n=Object.keys(DB.users).length;
+    return err.textContent = n===0
+      ? '這台裝置上沒有任何帳號資料。若是直接用 file:// 開檔，瀏覽器可能擋掉了儲存，請看首頁下方的資料狀態說明。'
+      : '查不到這個 E-mail 的帳號，請確認拼字，或改用「試玩帳號」。';
+  }
+  if(u.pw!==hash(pw)){ f.n++; if(f.n>=3){ f.until=Date.now()+180000; f.n=0; } loginFail[em]=f;
+    return err.textContent='密碼不正確（連續錯 3 次會暫停輸入 3 分鐘）。'; }
   if(!u.verified) return err.textContent='這個帳號尚未完成 E-mail 驗證。';
   loginFail[em]={n:0,until:0};
   DB.session={email:em,auto:$('#liRemember').checked}; await persist();
@@ -1225,6 +1298,7 @@ $('#btnForgot').onclick=async()=>{
   const b=$('#doReset'); if(b) b.onclick=async()=>{ u.pw=hash(u.code); await persist(); closeModals(); toast('密碼已重設','good'); };
 };
 $('#btnDemo').onclick=async()=>{
+  clearFade(); closeModals(); loginFail={};
   const em='guest@local';
   if(!DB.users[em]) DB.users[em]={acc:'G0000000000試玩玩家',email:em,bd:'',pw:'',verified:true,code:'',guest:true,
     created:Date.now(),save:newSave(em,'G0000000000試玩玩家')};
@@ -2814,7 +2888,9 @@ function tCfg(){
 (async function boot(){
   $('#logoImg').src=window.__LOGO__||'assets/logo.png';
   loadSprites();
+  Store.probe();
   await loadDB();
+  storageStatus();
   // 記住上次登入的帳號
   if(DB.session&&DB.session.email){
     $('#liEmail').value=DB.session.email;
@@ -2842,11 +2918,12 @@ function tCfg(){
     if(bgmReady&&bgm.paused){ bgm.volume=$('#bgmVol').value/100;
       bgm.play().then(()=>$('#btnBgm').textContent='暫停 BGM').catch(()=>{}); } });
   // Firebase
+  cloudStatus();
   initCloud().then(ok=>{
-    cloudStatus();
+    cloudStatus(); storageStatus();
     if(!ok) return;
     // 已登入且勾過「記住我」→ 直接接續（Firebase 自己保存了登入狀態）
-    Cloud.M.auth.onAuthStateChanged(Cloud.auth, async user=>{
+    Cloud.auth.onAuthStateChanged(async user=>{
       if(!user||S) return;
       if(!user.emailVerified){ return; }
       if(!(DB.session&&DB.session.auto)){ $('#liEmail').value=user.email; return; }
