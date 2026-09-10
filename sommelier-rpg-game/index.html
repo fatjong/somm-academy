@@ -269,7 +269,7 @@ table.data th{color:var(--gold);font-weight:500;font-size:12.5px}
   font-family:"Zpix","Fusion Pixel 12px","Silkscreen","DotGothic16","Press Start 2P","Noto Sans Mono CJK TC",monospace;
   -webkit-font-smoothing:none;image-rendering:pixelated;border-radius:0}
 .dlg-name{color:#ffd98a;font-size:13px;letter-spacing:.08em;margin-bottom:6px}
-.dlg-text{color:#f4ead9;font-size:15px;line-height:1.85;letter-spacing:.06em;min-height:56px}
+.dlg-text{color:#f4ead9;font-size:15px;line-height:1.8;letter-spacing:.06em;min-height:46px}
 .dlg-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}
 .dlg-btn{background:#2a1a26;border:2px solid #cfa24a;color:#f4ead9;padding:4px 12px;font-family:inherit;font-size:12px;border-radius:0}
 .dlg-btn:hover{background:#3d2536}
@@ -317,12 +317,13 @@ b.weak{color:#ff6f5e}
 
 
 /* ─── 地圖工具列 ─── */
-.map-tools{position:absolute;right:10px;bottom:10px;display:flex;gap:6px;z-index:3}
+.map-tools{position:absolute;right:10px;top:10px;display:flex;gap:6px;z-index:3;transition:opacity .2s,transform .2s}
+.map-tools.tucked{opacity:0;pointer-events:none;transform:translateY(-8px)}
 .mt{width:38px;height:38px;border-radius:9px;background:rgba(26,16,22,.86);border:1px solid var(--line);
   color:var(--ink);font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center}
 .mt.wide{width:auto;padding:0 12px;font-size:13px}
 .mt:active{background:rgba(60,36,50,.9)}
-@media (max-width:640px){ .map-tools{right:8px;bottom:8px} .mt{width:44px;height:44px;font-size:19px} }
+@media (max-width:640px){ .map-tools{right:8px;top:8px;flex-direction:column} .mt{width:42px;height:42px;font-size:18px} .mt.wide{width:42px;padding:0;font-size:12px} }
 .world-frame canvas{display:block;width:100%;height:auto;image-rendering:pixelated;touch-action:none;cursor:grab}
 .world-frame canvas:active{cursor:grabbing}
 
@@ -1230,7 +1231,7 @@ function newSave(email,acc){ return {
   email,acc,exp:0,cash:2000,bank:0,stamina:100,
   day:1,weekday:1,minutes:10*60,avatar:null,               // 星期一 10:00
   level:1,cleared:[],badges:[],inv:[{id:'phone'},{id:'card'}],
-  history:[],scoreLog:[],studied:0,mute:false,sfx:true,equip:[],study:{},atDoor:null,hurtDays:0,lastPay:0,
+  history:[],scoreLog:[],studied:0,mute:false,sfx:true,equip:[],study:{},atDoor:null,zoomPref:{},hurtDays:0,lastPay:0,
 };}
 
 $('#tabLogin').onclick=()=>{ $('#tabLogin').classList.add('on'); $('#tabReg').classList.remove('on');
@@ -1827,10 +1828,18 @@ function layoutCanvas(cvs,host,mode){
                                  Math.round(cw*(tall?1.25:0.78))));
   cvs.width=cw; cvs.height=ch;
   cvs.style.width='100%'; cvs.style.height='auto';
-  if(mode==='village') World.zoom = cw<560?1.1 : cw<900?0.95 : 0.85;
-  else World.zoom = cw>=1040 ? 1 : (cw>=680 ? cw/1000 : 0.82);
+  const def = mode==='village' ? (cw<560?1.1 : cw<900?0.95 : 0.85)
+                               : (cw>=1040 ? 1 : (cw>=680 ? cw/1000 : 0.82));
+  const pref = (typeof S!=='undefined'&&S&&S.zoomPref)?S.zoomPref[mode]:null;
+  World.zoom = pref ? clamp(pref,0.4,2) : def;
   World.fit = (mode!=='village') && World.zoom*1000<=cw+2;   // 餐廳整間放得下就不用捲動
   return {cw,ch};
+}
+function setZoom(mode,z,worldW,worldH){
+  World.zoom=clamp(z,0.4,2);
+  if(typeof S!=='undefined'&&S){ S.zoomPref=S.zoomPref||{}; S.zoomPref[mode]=World.zoom; saveGame(); }
+  if(mode!=='village') World.fit = World.zoom*1000<=World.cvs.width+2;
+  clampCam(worldW,worldH);
 }
 function clampCam(worldW,worldH){
   const vw=World.cvs.width/World.zoom, vh=World.cvs.height/World.zoom;
@@ -1893,8 +1902,13 @@ function dlgHTML(){ return '<div class="dlg-box hidden" id="dlgBox">'+
   '<div class="dlg-btns"><button class="dlg-btn" id="dlgSkip">跳過 ▶</button>'+
   '<button class="dlg-btn" id="dlgClose">關閉 ✕</button></div></div>'; }
 let dlgTimer=null;
+function toggleMapTools(hide){
+  const t=document.querySelector('.map-tools');
+  if(t) t.classList.toggle('tucked',!!hide);
+}
 function showDialogue(name,text,onClose){
   const box=$('#dlgBox'); if(!box) return;
+  toggleMapTools(true);
   box.classList.remove('hidden'); $('#dlgName').textContent=name;
   const el=$('#dlgText'); el.textContent=''; let i=0;
   if(dlgTimer) clearInterval(dlgTimer);
@@ -1907,7 +1921,7 @@ function showDialogue(name,text,onClose){
 function closeDialogue(onClose){
   const box=$('#dlgBox'); if(!box) return;
   if(dlgTimer){ clearInterval(dlgTimer); dlgTimer=null; }
-  box.classList.add('hidden'); if(onClose) onClose();
+  box.classList.add('hidden'); toggleMapTools(false); if(onClose) onClose();
 }
 
 /* ══════════ 侍酒村 ══════════ */
@@ -1934,9 +1948,10 @@ function startVillage(){
   if(World._resize) removeEventListener('resize',World._resize);
   World._resize=()=>{ if(World.mode==='village') relayout(); };
   addEventListener('resize',World._resize);
-  $('#mtIn').onclick=()=>{ World.zoom=clamp(World.zoom*1.25,0.5,2); clampCam(WW,WH); };
-  $('#mtOut').onclick=()=>{ World.zoom=clamp(World.zoom/1.25,0.5,2); clampCam(WW,WH); };
+  $('#mtIn').onclick=()=>setZoom('village',World.zoom*1.25,WW,WH);
+  $('#mtOut').onclick=()=>setZoom('village',World.zoom/1.25,WW,WH);
   $('#mtCenter').onclick=()=>{ World.camFree=false; };
+  const tools=host.querySelector('.map-tools');
   const bg=new Image(); bg.src=window.__MAPIMG__; World.bg=bg;
   const solid=(x,y)=>{ const tx=Math.floor(x/T), ty=Math.floor((y-4)/T);
     if(tx<0||ty<0||tx>=M.cols||ty>=M.rows) return true; return !!M.blocked[ty][tx]; };
@@ -2029,6 +2044,7 @@ function startVillage(){
       const npc=World.ents.find(e=>e.cool<=0&&Math.hypot(e.x-P.x,e.y-P.y)<58);
       if(npc){ P.path=null; npc.cool=900; Sfx.play('talk'); showDialogue(npc.name,npc.tip); }
     }
+    if(tools) tools.classList.toggle('tucked',dlgOpen());   // 對話框出現時收起按鈕，避免重疊
     if(!World.camFree) centerOn(P,WW,WH); else clampCam(WW,WH);
     const near=doors.find(([id,dd])=>Math.hypot(dd.x*T+16-P.x,dd.y*T+22-P.y)<44);
     World.prompt=near?('點門口進入 '+PLACE_NAME[near[0]]):null;
@@ -2156,8 +2172,8 @@ function startRestWorld(){
   if(World._resize) removeEventListener('resize',World._resize);
   World._resize=()=>{ if(World.mode==='rest'){ layoutCanvas($('#rcvs'),host,'rest'); clampCam(RW,RH); } };
   addEventListener('resize',World._resize);
-  $('#rtIn').onclick=()=>{ World.zoom=clamp(World.zoom*1.2,0.4,1.6); World.fit=false; clampCam(RW,RH); };
-  $('#rtOut').onclick=()=>{ World.zoom=clamp(World.zoom/1.2,0.4,1.6); clampCam(RW,RH); };
+  $('#rtIn').onclick=()=>setZoom('rest',World.zoom*1.2,RW,RH);
+  $('#rtOut').onclick=()=>setZoom('rest',World.zoom/1.2,RW,RH);
   $('#rtCenter').onclick=()=>{ World.camFree=false; };
   World.player={x:500,y:700,dir:'up',f:1,sprite:S.avatar||'p01',isPlayer:true};
   World.waiter={x:930,y:360,dir:'left',f:1,sprite:'n11',home:{x:930,y:360},path:[]};
