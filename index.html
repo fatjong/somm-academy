@@ -6,20 +6,26 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script>
-/* 儲存墊片：優先用宿主提供的 window.storage，否則退回 localStorage，再退回記憶體 */
+/* ---- 舊版 WebView（Android 7 未更新者）相容層 ---- */
+if(!String.prototype.padStart){String.prototype.padStart=function(n,pad){pad=pad||" ";var s=String(this);
+  while(s.length<n)s=pad+s;return s.slice(-Math.max(n,s.length));};}
+if(!Array.prototype.includes){Array.prototype.includes=function(v){return this.indexOf(v)>=0;};}
+
+/* 儲存墊片：宿主 window.storage > localStorage > 記憶體（不使用 async 語法） */
 (function(){
   if(window.storage&&typeof window.storage.get==="function")return;
   var mem={};
   var ok=(function(){try{localStorage.setItem("__t","1");localStorage.removeItem("__t");return true;}catch(e){return false;}})();
+  function res(v){return window.Promise?Promise.resolve(v):{then:function(f){f(v);return this;},catch:function(){return this;}};}
   window.storage={
-    get:async k=>{const v=ok?localStorage.getItem(k):mem[k];return v==null?null:{key:k,value:v};},
-    set:async (k,v)=>{ok?localStorage.setItem(k,v):(mem[k]=v);return {key:k,value:v};},
-    delete:async k=>{ok?localStorage.removeItem(k):(delete mem[k]);return {key:k,deleted:true};},
-    list:async p=>({keys:ok?Object.keys(localStorage).filter(k=>!p||k.startsWith(p)):Object.keys(mem)})
+    get:function(k){var v=ok?localStorage.getItem(k):mem[k];return res(v==null?null:{key:k,value:v});},
+    set:function(k,v){ok?localStorage.setItem(k,v):(mem[k]=v);return res({key:k,value:v});},
+    "delete":function(k){ok?localStorage.removeItem(k):(delete mem[k]);return res({key:k,deleted:true});},
+    list:function(pre){return res({keys:ok?Object.keys(localStorage).filter(function(k){return !pre||k.indexOf(pre)===0;}):Object.keys(mem)});}
   };
 })();
-if("serviceWorker" in navigator && location.protocol.startsWith("http"))
-  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)
+  window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js")["catch"](function(){});});
 </script>
 
 <style>
@@ -36,12 +42,12 @@ html,body{margin:0;padding:0;background:var(--ink)}
 body{color:var(--cream);font-family:var(--sans);font-size:15px;line-height:1.75;letter-spacing:.02em;overflow-x:hidden}
 
 /* ============ 第一人稱場景層 ============ */
-#stage{position:fixed;inset:0;z-index:0;overflow:hidden;background:#07080B}
-#stage .sv{position:absolute;inset:-4%;width:108%;height:108%;animation:sway 16s ease-in-out infinite}
+#stage{position:fixed;top:0;right:0;bottom:0;left:0;z-index:0;overflow:hidden;background:#07080B}
+#stage .sv{position:absolute;top:-4%;left:-4%;right:-4%;bottom:-4%;width:108%;height:108%;animation:sway 16s ease-in-out infinite}
 #stage .sv *{transform-box:fill-box;transform-origin:center}
-#stage:after{content:"";position:absolute;inset:0;pointer-events:none;
+#stage:after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;inset:0;pointer-events:none;
   background:radial-gradient(115% 75% at 50% 40%,transparent 25%,rgba(4,4,6,.72) 78%,rgba(4,4,6,.94) 100%)}
-#motes{position:fixed;inset:0;z-index:1;pointer-events:none;overflow:hidden}
+#motes{position:fixed;top:0;right:0;bottom:0;left:0;inset:0;z-index:1;pointer-events:none;overflow:hidden}
 #motes i{position:absolute;width:3px;height:3px;border-radius:50%;background:rgba(255,205,140,.5);
   filter:blur(.4px);animation:drift linear infinite}
 @keyframes sway{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-1.2%,.8%) scale(1.03)}}
@@ -73,7 +79,7 @@ body{color:var(--cream);font-family:var(--sans);font-size:15px;line-height:1.75;
 @keyframes scan{0%{transform:translateY(-46px);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateY(46px);opacity:0}}
 
 /* ============ 內容層 ============ */
-#app{position:relative;z-index:2;max-width:470px;margin:0 auto;min-height:100dvh;
+#app{position:relative;z-index:2;max-width:470px;margin:0 auto;min-height:100vh;min-height:100dvh;
   padding:calc(var(--safe-top,env(safe-area-inset-top,0px)) + 40px + 5mm) 16px calc(40px + var(--safe-bottom,env(safe-area-inset-bottom,0px)))}
 .audiobar{position:fixed;top:calc(10px + var(--safe-top,env(safe-area-inset-top,0px)));left:50%;transform:translateX(-50%);z-index:7;display:flex;gap:7px;
   max-width:470px;width:100%;justify-content:flex-end;padding:0 16px}
@@ -91,7 +97,7 @@ body{color:var(--cream);font-family:var(--sans);font-size:15px;line-height:1.75;
 .pchip:hover{border-color:var(--hud);background:rgba(255,178,89,.12)}
 .pchip.on{border-color:var(--hud);background:rgba(255,178,89,.2);color:#FFDCAC}
 .pchip small{display:block;font-size:9.5px;color:var(--mute);letter-spacing:.02em;margin-top:2px}
-.modal{position:fixed;inset:0;z-index:9;display:none;align-items:center;justify-content:center;
+.modal{position:fixed;top:0;right:0;bottom:0;left:0;inset:0;z-index:9;display:none;align-items:center;justify-content:center;
   padding:calc(20px + var(--safe-top,env(safe-area-inset-top,0px))) 20px calc(20px + var(--safe-bottom,env(safe-area-inset-bottom,0px)));
   background:rgba(3,4,6,.72);backdrop-filter:blur(3px)}
 .modal.on{display:flex}
@@ -175,7 +181,7 @@ p{margin:0}
   background:linear-gradient(90deg,var(--wine),var(--hud));box-shadow:0 0 12px rgba(255,170,80,.6);
   transition:width .9s cubic-bezier(.2,.8,.2,1)}
 .rack{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
-.slot{position:relative;aspect-ratio:1/1.2;border:1px solid rgba(255,178,89,.2);border-radius:8px;
+.slot{position:relative;min-height:78px;aspect-ratio:1/1.2;border:1px solid rgba(255,178,89,.2);border-radius:8px;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
   background:rgba(6,8,12,.5);cursor:pointer;transition:.3s;overflow:hidden;
   animation:slotIn .5s both}
@@ -190,7 +196,7 @@ p{margin:0}
 .slot.done{background:radial-gradient(70% 70% at 50% 45%,rgba(255,178,89,.18),rgba(6,8,12,.5))}
 .slot .stars{font-size:8px;letter-spacing:2px;color:var(--hud);height:11px}
 .slot.locked{opacity:.55;cursor:not-allowed}
-.slot.next:before{content:"";position:absolute;inset:0;border-radius:8px;border:1px solid var(--hud);animation:ping 2.2s ease-out infinite}
+.slot.next:before{content:"";position:absolute;top:0;right:0;bottom:0;left:0;inset:0;border-radius:8px;border:1px solid var(--hud);animation:ping 2.2s ease-out infinite}
 @keyframes ping{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1.12)}}
 
 /* ---- 教學卡 ---- */
@@ -245,7 +251,7 @@ input[type=range]{width:100%;accent-color:var(--hud);margin-top:12px}
 .skill-unlock{border:1px solid var(--hud-dim);border-radius:10px;padding:14px;margin:14px 0;
   background:rgba(255,178,89,.07);text-align:center}
 .skill-unlock .v{font-family:var(--serif);font-size:22px;color:var(--gold-hi);margin-top:4px}
-#burst{position:fixed;inset:0;z-index:3;pointer-events:none}
+#burst{position:fixed;top:0;right:0;bottom:0;left:0;inset:0;z-index:3;pointer-events:none}
 #burst i{position:absolute;left:50%;top:34%;width:5px;height:5px;border-radius:50%;background:var(--hud);
   box-shadow:0 0 10px var(--hud)}
 @keyframes spark{to{transform:translate(var(--x),var(--y)) scale(0);opacity:0}}
@@ -289,6 +295,35 @@ body.lite .hud-title b{animation:none}
 body.lite .score,body.lite .slider-val{text-shadow:none}
 body.lite #burst{display:none}
 body.paused #stage .sv,body.paused #stage .sv *,body.paused #motes i{animation-play-state:paused}
+/* ---- 舊版 WebView（無 CSS Grid / gap）版面後備 ---- */
+@supports not (display:grid){
+  .rack{display:flex;flex-wrap:wrap;margin:12px -3px 0}
+  .rack .slot{width:calc(25% - 6px);margin:3px}
+  .bgrid{display:flex;flex-wrap:wrap;margin:12px -4px 0}
+  .bgrid .bcell{width:calc(50% - 8px);margin:4px}
+  .mtch{display:flex;flex-wrap:wrap;margin:0 -4px 12px}
+  .mtch button{width:calc(50% - 8px);margin:4px}
+  .preset{display:flex;flex-wrap:wrap}
+  .preset .pchip{margin:3px}
+  .pool button,.seq span{margin:0 6px 6px 0}
+  .stat-row{display:flex}
+}
+input[type=text]{width:100%;padding:13px 14px;border-radius:8px;border:1px solid var(--hud-dim);
+  background:rgba(6,8,12,.9);color:var(--cream);font-family:var(--sans);font-size:16px;letter-spacing:.06em}
+input[type=text]::placeholder{color:rgba(156,146,133,.7)}
+.rank-row{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid rgba(255,178,89,.18);
+  border-radius:8px;margin-bottom:7px;background:rgba(6,8,12,.5);animation:slotIn .4s both}
+.rank-row.me{border-color:var(--hud);background:rgba(255,178,89,.14)}
+.rank-row .no{font-family:var(--serif);font-size:15px;color:var(--hud);min-width:30px;text-align:center}
+.rank-row .who{flex:1;min-width:0}
+.rank-row .who b{display:block;font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rank-row .who span{font-size:10px;color:var(--mute);letter-spacing:.08em}
+.rank-row .st{font-family:var(--serif);font-size:16px;color:var(--gold-hi);white-space:nowrap}
+.rank-row.top1 .no{font-size:19px;text-shadow:0 0 12px rgba(255,178,89,.8)}
+.starbig{font-size:15px;letter-spacing:1px;color:var(--hud)}
+.gate{font-size:10px;color:var(--mute);letter-spacing:.06em;margin-top:2px}
+#oldwv{display:none;margin:12px 0;padding:12px 14px;border:1px solid var(--wine);border-radius:8px;
+  background:rgba(192,56,76,.12);font-size:12.5px;line-height:1.7}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
@@ -307,11 +342,14 @@ body.paused #stage .sv,body.paused #stage .sv *,body.paused #motes i{animation-p
 <div id="app">
 
 <section id="cover" class="screen on">
+  <div id="oldwv">您的 Android System WebView 版本較舊，部分動畫與版面可能顯示異常。<br>
+  建議至 Google Play 更新「Android System WebView」與 Chrome 後重新開啟。</div>
   <div style="text-align:center">
     <svg viewBox="0 0 48 48" width="58" height="58" fill="none" stroke="#FFB259" stroke-width="1.2" class="bob">
       <path d="M24 4c-4 5-7 8-7 13a7 7 0 0014 0c0-5-3-8-7-13z"/><path d="M24 24v14M18 44h12" stroke-linecap="round"/>
       <circle cx="24" cy="17" r="2.4" fill="#FFB259" stroke="none" class="flick"/></svg>
     <p class="cover-en">SOMMELIER ACADEMY</p>
+    <p class="sub" id="cv-who" style="margin-bottom:6px"></p>
     <h1>侍酒師學院</h1>
   </div>
   <div class="hud">
@@ -325,8 +363,8 @@ body.paused #stage .sv,body.paused #stage .sv *,body.paused #motes i{animation-p
     <div class="corner"></div>
   </div>
   <p class="caption">戴上耳機、站進酒窖——<em>今晚第一組客人 19:00 進場。</em></p>
-  <button class="btn" id="btn-start">進入酒窖（開啟語音）</button>
-  <button class="btn ghost" id="btn-reset">清除學習紀錄</button>
+  <button class="btn" id="btn-start">進入酒窖</button>
+  <button class="btn ghost" id="btn-reset">回復出廠設定</button>
   <div class="credit">
     <img src="data:image/png;base64,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" alt="龍華科技大學 LUNGHWA UNIVERSITY OF SCIENCE AND TECHNOLOGY">
     <div class="role">指導老師 · ADVISOR</div>
@@ -337,11 +375,45 @@ body.paused #stage .sv,body.paused #stage .sv *,body.paused #motes i{animation-p
   </div>
 </section>
 
+<section id="name" class="screen">
+  <div class="hud">
+    <div class="hud-title"><b>◀</b>學員報到<b>▶</b></div>
+    <h2>請輸入你的名字</h2>
+    <p class="sub" style="margin-top:6px">請輸入學號與姓名，將顯示在線上排行榜上</p>
+    <div class="hud-line"></div>
+    <input type="text" id="nm-input" maxlength="16" placeholder="例如：11012345 王小明">
+    <p class="vo-hint">請填寫「學號＋姓名」以利辨識，最多 16 個字，之後可在設定中修改</p>
+    <div class="hud-line"></div>
+    <p class="sub" style="font-size:12px">換過手機、已經有玩家代碼？</p>
+    <input type="text" id="nm-code" maxlength="10" placeholder="輸入代碼還原進度" style="text-transform:uppercase;letter-spacing:.3em;text-align:center;margin-top:8px">
+    <button class="mini" id="nm-restore" style="width:100%;margin-top:8px">↓ 還原我的成績</button>
+    <p class="vo-hint" id="nm-msg"></p>
+    <div class="corner"></div>
+  </div>
+  <button class="btn" id="nm-ok">開始訓練</button>
+</section>
+
+<section id="rank" class="screen">
+  <div class="hud">
+    <div class="hud-title"><b>◀</b>線上排行榜<b>▶</b></div>
+    <p class="sub" id="rk-sum" style="margin-bottom:10px;line-height:1.9;word-break:break-all"></p>
+    <div id="rk-list"></div>
+    <div class="corner"></div>
+  </div>
+  <button class="btn ghost" id="rk-toggle">★ 只看每人最佳</button>
+  <button class="btn ghost" id="rk-refresh">↻ 重新整理</button>
+  <button class="btn ghost" id="rk-diag">🔧 連線診斷</button>
+  <button class="btn ghost" id="rk-back">回酒窖</button>
+</section>
+
 <section id="map" class="screen">
   <div class="hud tight">
     <div class="topbar">
-      <div><p class="eyebrow">CELLAR WALL</p><h2 style="font-size:20px">技能酒窖</h2></div>
-      <button class="btn ghost" style="width:auto;margin:0;padding:8px 12px;font-size:12px" id="btn-book">徽章冊</button>
+      <div><p class="eyebrow" id="mp-who">CELLAR WALL</p><h2 style="font-size:20px">技能酒窖</h2></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn ghost" style="width:auto;margin:0;padding:8px 10px;font-size:12px" id="btn-rank">🏆 排行</button>
+        <button class="btn ghost" style="width:auto;margin:0;padding:8px 10px;font-size:12px" id="btn-book">徽章冊</button>
+      </div>
     </div>
     <div class="prog" style="margin-top:10px"><i id="prog-bar" style="width:0%"></i></div>
     <p class="sub" id="prog-txt" style="margin-top:8px"></p>
@@ -406,6 +478,17 @@ body.paused #stage .sv,body.paused #stage .sv *,body.paused #motes i{animation-p
   <button class="btn ghost" id="bk-back">回酒窖</button>
 </section>
 
+<div class="modal" id="confirm">
+  <div class="hud">
+    <div class="hud-title"><b>◀</b><span id="cf-title">請確認</span><b>▶</b></div>
+    <p id="cf-msg" style="font-size:14.5px"></p>
+    <div class="hud-line"></div>
+    <button class="btn" id="cf-yes">確認</button>
+    <button class="btn ghost" id="cf-no">取消</button>
+    <div class="corner"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <div class="modal" id="voset">
@@ -416,6 +499,32 @@ body.paused #stage .sv,body.paused #stage .sv *,body.paused #motes i{animation-p
       <label>語音來源 <i id="vo-count"></i></label>
       <select id="vo-pick"></select>
       <p class="vo-hint" id="vo-hint"></p>
+      <p class="vo-hint" id="vo-diag" style="opacity:.6;font-size:10px;word-break:break-all"></p>
+      <div id="tts-fix" style="display:none">
+        <button class="mini" id="tts-install" style="width:100%;margin-top:10px">↓ 安裝中文語音資料</button>
+        <button class="mini" id="tts-settings" style="width:100%;margin-top:8px">⚙ 開啟系統語音設定</button>
+        <button class="mini" id="tts-retry" style="width:100%;margin-top:8px">↻ 重新偵測語音引擎</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>玩家名稱 <i id="pl-stars"></i></label>
+      <input type="text" id="pl-name" maxlength="16" placeholder="學號＋姓名">
+    </div>
+    <div class="field">
+      <label>玩家代碼 <i id="pl-code">------</i></label>
+      <p class="vo-hint">換手機或重設後，輸入這組代碼即可救回雲端成績（點一下可複製）。雲端紀錄永久保留，不會因為本機重設而消失。</p>
+      <input type="text" id="rs-code" maxlength="10" placeholder="輸入代碼以還原進度" style="text-transform:uppercase;letter-spacing:.3em;text-align:center">
+      <button class="mini" id="rs-go" style="width:100%;margin-top:8px">↓ 還原雲端進度</button>
+      <p class="vo-hint" id="rs-msg"></p>
+      <input type="text" id="cs-code" maxlength="10" placeholder="改用自訂代碼（4～10 碼）" style="text-transform:uppercase;letter-spacing:.2em;text-align:center;margin-top:10px">
+      <button class="mini" id="cs-go" style="width:100%;margin-top:8px">✎ 設定為我的專屬代碼</button>
+      <p class="vo-hint" id="cs-msg">可改成生日或學號等好記的數字。換代碼後舊紀錄仍留在雲端，隨時可用舊代碼救回。</p>
+    </div>
+    <div class="field">
+      <label>排行榜伺服器</label>
+      <input type="text" id="lb-api" placeholder="留空＝使用內建班級伺服器">
+      <button class="mini" id="lb-push" style="width:100%;margin-top:8px">↑ 立即上傳我的成績</button>
+      <p class="vo-hint" id="lb-msg">已連線班級排行榜。</p>
     </div>
     <div class="field">
       <label>音色預設 <i id="vo-now">甜美</i></label>
@@ -430,6 +539,7 @@ body.paused #stage .sv,body.paused #stage .sv *,body.paused #motes i{animation-p
       <input type="range" id="vo-rate" min="0.60" max="1.40" step="0.01" value="1.02">
     </div>
     <button class="mini" id="vo-try" style="width:100%;margin-top:16px">🔊 試聽這個聲音</button>
+    <button class="mini" id="vo-test" style="width:100%;margin-top:8px">▶ 測試語音包能否播放</button>
     <button class="mini" id="vo-def" style="width:100%;margin-top:8px">↺ 還原本裝置預設音色</button>
     <div class="field">
       <label>省電模式 <i id="lite-val">開啟</i></label>
@@ -839,7 +949,7 @@ const VO={
  DEFS:{ mobile:{pitch:1.00,rate:1.10,voiceIndex:2}, web:{pitch:1.22,rate:1.02,voiceIndex:0} },
  platform(){ return (window.AndroidTTS||/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent))?"mobile":"web"; },
  get DEF(){ return this.DEFS[this.platform()]; }, q:[], busy:false, last:"",
- base:"voice/", files:null, audio:null, chain:[],
+ base:"voice/", ext:"mp3", mode:"auto", files:null, audio:null, chain:[],
  /* Android WebView 沒有 Web Speech API，改用原生 TextToSpeech 橋接 */
  native(){ try{return !!(window.AndroidTTS&&window.AndroidTTS.ready());}catch(e){return false;} },
  nativeVoices(){ try{
@@ -848,23 +958,95 @@ const VO={
                                           :{name:v.n,label:v.l||v.n,lang:v.g||"zh-TW",native:true});
    }catch(e){return [];} },
  /* 若同資料夾有 voice/manifest.json 與 mp3，改用預錄的 HsiaoChen 語音；否則自動退回系統語音 */
- async loadFiles(){
-   try{const r=await fetch(this.base+"manifest.json",{cache:"no-store"});
-     if(!r.ok)throw 0;const j=await r.json();
-     this.files=new Set((j.lines||[]).map(l=>l.id));
-     if(typeof paintVoicePanel==="function")paintVoicePanel();
-   }catch(e){this.files=null;}
+ diag:{xhr:"未執行",probe:"未執行",play:"未播放"},
+ /* 後備偵測：即使讀不到 manifest，只要能載入第一個 mp3 就視為語音包存在 */
+ probe(){
+   var self=this;
+   try{
+     var exts=["ogg","mp3"],i=0;
+     var tryNext=function(){
+       if(i>=exts.length){ self.files=null; self.diag.probe="找不到 voice/sys_intro.*"; return; }
+       var e=exts[i++], a=new Audio(self.base+"sys_intro."+e);
+       a.preload="metadata";
+       a.onloadedmetadata=function(){
+         self.ext=e;
+         self.files={has:function(){return true;},size:"已偵測"};
+         self.diag.probe="成功（"+e+"）";
+         if(typeof paintVoicePanel==="function")paintVoicePanel();
+       };
+       a.onerror=tryNext;
+       a.load();
+     };
+     tryNext();
+   }catch(e){ this.files=null; this.diag.probe="無法探測"; }
+ },
+ loadFiles(){
+   /* file:// 下 fetch 會被擋，改用 XHR 才能在 APK 內讀到 assets 裡的語音清單 */
+   var self=this;
+   try{
+     var x=new XMLHttpRequest();
+     x.open("GET",this.base+"manifest.json",true);
+     x.onreadystatechange=function(){
+       if(x.readyState!==4)return;
+       try{
+         if(x.status===0&&!x.responseText)throw 0;
+         var j=JSON.parse(x.responseText);
+         var ids={},n=0,lines=j.lines||[];
+         for(var i=0;i<lines.length;i++){ids[lines[i].id]=1;n++;}
+         self.files={has:function(k){return !!ids[k];},size:n};
+         self.ext=j.format||"mp3";
+         self.diag.xhr="成功，"+n+" 段（"+self.ext+"）";
+         if(typeof paintVoicePanel==="function")paintVoicePanel();
+       }catch(e){ self.diag.xhr="讀取 manifest 失敗（不影響播放）"; self.probe(); }
+     };
+     x.onerror=function(){ self.diag.xhr='XHR 錯誤'; self.probe(); };
+     x.send();
+   }catch(e){ this.diag.xhr='無法建立 XHR'; this.probe(); }
  },
  playIds(ids,fb){
-   const list=ids.slice();const step=()=>{
-     if(!this.on||!list.length)return;
-     const id=list.shift();
-     const el=new Audio(this.base+id+".mp3");
-     this.audio=el;el.volume=1;
-     el.onended=()=>{if(list.length)step();else if(typeof BGM!=='undefined')BGM.duck(false);};
-     el.onerror=()=>{this.files=null;this._tts(fb);};
-     el.play().catch(()=>{this.files=null;this._tts(fb);});
-   };step();
+   var self=this;
+   var list=ids.slice();
+   var step=function(){
+     if(!self.on||!list.length)return;
+     var id=list.shift();
+     var tried=[];
+     var attempt=function(ext){
+       tried.push(ext);
+       var el=new Audio(self.base+id+"."+ext);
+       self.audio=el; el.volume=1;
+       el.onplaying=function(){ self.mode="files"; self.diag.play="播放中（"+ext+"）"; };
+       el.onended=function(){ self.mode="files";
+         if(list.length)step(); else if(typeof BGM!=="undefined")BGM.duck(false); };
+       el.onerror=function(){
+         var code=(el.error&&el.error.code)||0;
+         self.diag.play="播放失敗 "+id+"."+ext+"（錯誤碼 "+code+"）";
+         if(ext==="ogg"&&tried.indexOf("mp3")<0){ self.ext="mp3"; attempt("mp3"); return; }   /* 換格式再試 */
+         if(ext==="mp3"&&tried.indexOf("ogg")<0){ self.ext="ogg"; attempt("ogg"); return; }
+         self.mode="tts"; self.files=null; self._tts(fb);                    /* 兩種格式都失敗才退回系統語音 */
+       };
+       var pr=el.play();
+       if(pr&&pr["catch"])pr["catch"](function(){
+         self.diag.play="play() 被拒絕（需使用者互動）";
+         if(tried.length>=2){ self.mode="tts"; self.files=null; self._tts(fb); }
+       });
+     };
+     attempt(self.ext);
+   };
+   step();
+ },
+ /* 直接測試語音包能否播放，供設定面板診斷 */
+ test(cb){
+   var self=this, exts=["mp3","ogg"], i=0;
+   var go=function(){
+     if(i>=exts.length){ cb("語音包無法播放（mp3 與 ogg 都失敗），已退回系統語音"); return; }
+     var e=exts[i++], el=new Audio(self.base+"sys_intro."+e);
+     el.onended=function(){ self.ext=e; self.mode="files"; self.diag.play="測試成功（"+e+"）"; cb("播放成功：sys_intro."+e+"，語音包已啟用"); };
+     el.onerror=function(){ var c=(el.error&&el.error.code)||0; 
+       if(i<exts.length)go(); else cb("播放失敗（錯誤碼 "+c+"）"); };
+     var pr=el.play();
+     if(pr&&pr["catch"])pr["catch"](function(err){ cb("播放被拒："+err); });
+   };
+   go();
  },
  /* 語音評分：神經網路語音 > 已知女聲 > 其他中文語音；男聲直接扣分 */
  score(v){
@@ -915,8 +1097,11 @@ const VO={
    const txt=this.clean(t); if(!txt)return;
    this.last=txt; this.lastIds=ids; this.stop(); this.opt=opt||{};
    if(typeof BGM!=='undefined')BGM.duck(true);
-   const arr=ids?(Array.isArray(ids)?ids:[ids]):null;
-   if(arr&&this.files&&arr.every(i=>this.files.has(i))){this.playIds(arr,txt);return;}
+   var arr=ids?(Array.isArray(ids)?ids:[ids]):null;
+   /* 不再依賴 manifest 偵測：有 id 就直接試播，失敗才退回系統語音 */
+   if(arr&&this.mode!=="tts"){
+     if(!this.files||this.files.has(arr[0])||this.mode==="auto"){ this.playIds(arr,txt); return; }
+   }
    this._tts(txt);
  },
  _tts(txt){
@@ -926,7 +1111,12 @@ const VO={
      return;
    }
    if(!("speechSynthesis" in window))return;
-   this.q=this.clean(txt).split(/(?<=[。！？；：])/).map(s=>s.trim()).filter(Boolean);
+   /* 依標點切句（避免使用舊版 WebView 不支援的後行斷言） */
+   var src=this.clean(txt),out=[],buf="";
+   for(var i=0;i<src.length;i++){buf+=src[i];
+     if("。！？；：".indexOf(src[i])>=0){out.push(buf);buf="";}}
+   if(buf.trim())out.push(buf);
+   this.q=out.map(function(s){return s.trim();}).filter(Boolean);
    this.busy=true; this._next(0);
  },
  _next(i){
@@ -1059,7 +1249,7 @@ const NARR=["【後場 18:20】主管把胸針別到你領口：「今晚跟著�
 "【主餐廳 隔日 19:00】今晚這一桌，從頭到尾交給你。"];
 
 const KEY="somm_academy_v2";
-let S={unlocked:1,best:{},stars:{}}, cur=1, li=0, qs=[], qi=0, ok=0, wrong=[], answered=false, tmp=null;
+let S={name:"",best:{},qc:{},achievedAt:0,api:"",lite:undefined}, cur=1, li=0, qs=[], qi=0, ok=0, wrong=[], answered=false, tmp=null;
 const $=id=>document.getElementById(id);
 const shuffle=a=>a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(v=>v[1]);
 const reflow=el=>{el.style.animation="none";void el.offsetWidth;el.style.animation="";};
@@ -1074,7 +1264,17 @@ function burst(color,count){if(document.body.classList.contains("lite"))return;c
     h+=`<i style="--x:${(Math.cos(a)*d).toFixed(0)}px;--y:${(Math.sin(a)*d).toFixed(0)}px;background:${color};box-shadow:0 0 10px ${color};animation:spark ${(.7+Math.random()*.7).toFixed(2)}s ease-out forwards"></i>`;}
   b.innerHTML=h;setTimeout(()=>b.innerHTML="",1500);}
 
-async function load(){try{const r=await window.storage.get(KEY);if(r&&r.value)S=Object.assign(S,JSON.parse(r.value));}catch(e){}VO.on=S.voice!==false;SFX.on=S.sfx!==false;
+function newCode(){
+  const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";   /* 去掉易混淆的 I O 0 1 */
+  let s="";for(let i=0;i<6;i++)s+=A[Math.floor(Math.random()*A.length)];
+  return s;
+}
+function applyPrefs(){
+  if(!S.uid)S.uid=newCode();
+  if(S.api&&S.api.indexOf("AKfycbzRu1YGVthHSShAzFogu")>=0)S.api="";   /* 舊的部署已失效 */
+  if(!S.correct)S.correct={};
+  if(!S.best)S.best={};
+  if(typeof S.achievedAt!=="number")S.achievedAt=0;VO.on=S.voice!==false;SFX.on=S.sfx!==false;
   VO.pitch=(typeof S.pitch==="number")?S.pitch:VO.DEF.pitch;
   VO.rate =(typeof S.rate ==="number")?S.rate :VO.DEF.rate;
   BGM.on=S.bgm!==false; if(typeof S.bgmVol==="number")BGM.vol=S.bgmVol;
@@ -1083,28 +1283,80 @@ async function load(){try{const r=await window.storage.get(KEY);if(r&&r.value)S=
   if(S.voiceName){VO.wanted=S.voiceName;VO.use(S.voiceName);
     [300,1200,3000].forEach(t=>setTimeout(()=>{VO.refresh();paintVoicePanel();},t));}
   paintAudio();paintVoicePanel();paintCover();}
-async function save(){try{await window.storage.set(KEY,JSON.stringify(S));}catch(e){}}
+function load(){
+  var fin=function(){applyPrefs();};
+  try{
+    var p=window.storage.get(KEY);
+    if(p&&p.then){p.then(function(r){
+        try{if(r&&r.value)S=Object.assign(S,JSON.parse(r.value));}catch(e){}
+        fin();
+      },fin);
+      return;}
+  }catch(e){}
+  fin();
+}
+function save(){try{var p=window.storage.set(KEY,JSON.stringify(S));if(p&&p["catch"])p["catch"](function(){});}catch(e){}}
+function ask(title,msg,onYes){
+  $("cf-title").textContent=title;
+  $("cf-msg").innerHTML=String(msg).replace(/\n/g,"<br>");
+  $("confirm").classList.add("on");
+  $("cf-yes").onclick=()=>{$("confirm").classList.remove("on");onYes();};
+  $("cf-no").onclick=()=>{$("confirm").classList.remove("on");};
+  $("confirm").onclick=e=>{if(e.target.id==="confirm")$("confirm").classList.remove("on");};
+}
 function toast(t){const el=$("toast");el.textContent=t;el.classList.add("on");setTimeout(()=>el.classList.remove("on"),1900);}
 function show(id){VO.stop();document.querySelectorAll(".screen").forEach(s=>s.classList.remove("on"));$(id).classList.add("on");window.scrollTo(0,0);}
-const doneCount=()=>Object.keys(S.best).filter(k=>S.best[k]>=80).length;
-function paintCover(){$("cv-skill").textContent=doneCount();$("cv-star").textContent=Object.values(S.stars).reduce((a,b)=>a+b,0);}
+/* ---------- 星星與解鎖規則 ---------- */
+const QN=n=>LV[n-1].quiz.length;                 /* 該關題數 */
+const qcOf=n=>{const a=S.qc[n];return Array.isArray(a)?a:[];};
+const starOf=n=>qcOf(n).filter(Boolean).length;   /* 星星＝最近一次作答的答對題數 */
+const totalStars=()=>{let t=0;for(let n=1;n<=20;n++)t+=starOf(n);return t;};
+const maxStars=()=>{let t=0;for(let n=1;n<=20;n++)t+=QN(n);return t;};
+const perfect18=()=>{for(let n=1;n<=18;n++){if(starOf(n)<QN(n))return false;}return true;};
+function passMark(n){ return n<=10?50 : n<=15?70 : 80; }
+function maxUnlocked(){
+  let u=1;
+  for(let n=1;n<=18;n++){
+    if(everPassed(n)) u=n+1; else return u;
+  }
+  if(!perfect18()) return 18;                    /* 前 18 關須全對才能進入最後兩關 */
+  if(everPassed(19)) return 20;
+  return 19;
+}
+const curPct=n=>{const q=QN(n);return q?Math.round(starOf(n)/q*100):0;};
+const isPassed=n=>curPct(n)>=passMark(n);              /* 顯示與上傳：以目前實力為準 */
+const everPassed=n=>(S.best[n]||0)>=passMark(n);       /* 解鎖判定：曾經達標就永久保留 */
+const doneCount=()=>{let c=0;for(let n=1;n<=20;n++)if(isPassed(n))c++;return c;};
+const who=()=>S.name||"學員";
+function paintCover(){
+  $("cv-skill").textContent=doneCount();
+  $("cv-star").textContent=totalStars();
+  const w=$("cv-who");
+  if(w)w.textContent=S.name?`學員　${S.name}　★ ${totalStars()}`:"";
+}
 
 /* ---------- 酒架地圖 ---------- */
 function renderMap(){
   setScene(0);
-  const d=doneCount();
-  $("prog-bar").style.width=(d/20*100)+"%";
-  $("prog-txt").textContent = d===0?"尚未開瓶　·　從第 01 關開始":(d===20?"二十項技能全數解鎖":`已解鎖 ${d} / 20 項技能`);
-  $("map-cap").innerHTML = d===20?"主管把酒單交到你手上：<em>「今晚這區，你負責。」</em>":`下一個場景：<em>${LV[Math.min(S.unlocked,20)-1].t}</em>`;
+  const d=doneCount(),U=maxUnlocked(),ts=totalStars();
+  $("prog-bar").style.width=(ts/maxStars()*100)+"%";
+  $("prog-txt").textContent = `★ ${ts} / ${maxStars()}　·　已通過 ${d} / 20 關`;
+  $("map-cap").innerHTML = d===20?"主管把酒單交到你手上：<em>「今晚這區，你負責。」</em>"
+    : (U>=19?`最終兩關已開啟：<em>${LV[U-1].t}</em>`
+    : (U===18&&isPassed(18)?"最後兩關需要 <em>前 18 關全部題目答對</em>":`下一個場景：<em>${LV[U-1].t}</em>`));
   $("rack").innerHTML=LV.map((L,i)=>{
-    const n=i+1,best=S.best[n]||0;
-    const cls=best>=80?"open done":(n<=S.unlocked?"open next":"locked");
-    return `<div class="slot ${cls}" data-n="${n}" role="button" tabindex="${n<=S.unlocked?0:-1}" style="animation-delay:${i*.03}s">
+    const n=i+1,open=n<=U,got=starOf(n),qn=QN(n);
+    const cls=everPassed(n)?"open done":(open?"open next":"locked");
+    return `<div class="slot ${cls}" data-n="${n}" role="button" tabindex="${open?0:-1}" style="animation-delay:${i*.03}s">
       <span class="no">${String(n).padStart(2,"0")}</span>${ico(L.cat)}
-      <span class="nm">${n<=S.unlocked?L.s:"未解鎖"}</span>
-      <span class="stars">${best>=80?"★".repeat(S.stars[n]||1):""}</span></div>`;}).join("");
+      <span class="nm">${open?L.s:"未解鎖"}</span>
+      <span class="stars">${open?`★${got}/${qn}`:`需 ${passMark(n)}%`}</span></div>`;}).join("");
   $("rack").querySelectorAll(".slot").forEach(el=>{
-    el.onclick=()=>{const n=+el.dataset.n;if(n>S.unlocked){toast("先通過前一關才能開這支酒");return;}openLevel(n);};
+    el.onclick=()=>{const n=+el.dataset.n;
+      if(n>maxUnlocked()){
+        toast(n>=19?"前 18 關所有題目都答對才能進入":`先通過第 ${String(n-1).padStart(2,"0")} 關（${passMark(n-1)}% 以上）`);
+        return;}
+      openLevel(n);};
     el.onkeydown=e=>{if(e.key==="Enter")el.click();};});
   show("map");
 }
@@ -1115,11 +1367,11 @@ function renderLesson(){
   const L=LV[cur-1],c=L.lesson[li];
   $("ls-chip").textContent=`LEVEL ${String(cur).padStart(2,"0")} · ${L.cat}`;
   $("ls-title").textContent=L.t;
-  $("ls-skill").textContent=`本關技能：${L.s}　│　教學 ${li+1} / ${L.lesson.length}`;
+  $("ls-skill").textContent=`${who()}　│　本關技能：${L.s}　│　教學 ${li+1} / ${L.lesson.length}`;
   $("ls-card").innerHTML=`<h3>${c.h}</h3><p style="margin-top:8px;font-size:14.5px">${c.p}</p>
     <div class="tip"><b>職人提點</b>　${c.tip}</div>`;
   $("ls-pager").innerHTML=L.lesson.map((_,i)=>`<i class="${i===li?'on':''}"></i>`).join("");
-  $("ls-cap").innerHTML=li===0?NARR[cur-1]:`<em>${L.s}</em>　訓練中……`;
+  $("ls-cap").innerHTML=li===0?(cur===1&&S.name?`<em>${S.name}</em>，${NARR[0]}`:NARR[cur-1]):`<em>${L.s}</em>　訓練中……`;
   $("ls-next").textContent=li===L.lesson.length-1?"進入實戰考核":"下一頁";
   reflow($("ls-hud"));reflow($("ls-cap"));
   SFX.page();
@@ -1135,7 +1387,7 @@ function renderQ(){
   const q=qs[qi];answered=false;tmp=null;
   $("q-type").textContent=TYPE[q.t];
   $("q-count").textContent=`第 ${qi+1} 題 / ${qs.length}`;
-  $("q-skill").textContent=LV[cur-1].s;
+  $("q-skill").textContent=`${who()} · ${LV[cur-1].s}`;
   $("q-bar").style.width=(qi/qs.length*100)+"%";
   $("q-text").textContent=q.q;
   $("q-why").innerHTML="";
@@ -1183,6 +1435,18 @@ function renderQ(){
     A.disabled=false;
   }
 }
+let syncTimer=null;
+function markAnswer(n,idx,good){
+  if(!Array.isArray(S.qc[n]))S.qc[n]=new Array(QN(n)).fill(false);
+  const before=totalStars();
+  S.qc[n][idx]=!!good;
+  const after=totalStars();
+  if(after>before)S.achievedAt=Date.now();     /* 星數提升才更新達成時間，維持同分排序 */
+  save();
+  paintCover();
+  clearTimeout(syncTimer);                     /* 連續作答時合併上傳，避免打爆伺服器 */
+  syncTimer=setTimeout(()=>LB.submit(),1200);
+}
 function submit(){
   const q=qs[qi],B=$("q-body");let good=false;
   if(q.t==="mc"||q.t==="ms"){
@@ -1198,6 +1462,7 @@ function submit(){
     B.insertAdjacentHTML("beforeend",`<p class="sub" style="text-align:center">建議範圍 ${q.lo}–${q.hi}${q.unit}　·　你的判斷 ${tmp}${q.unit}</p>`);}
 
   answered=true;
+  markAnswer(cur,qi,good);            /* 逐題紀錄：重做時答錯會收回原本的星星 */
   if(good){ok++;burst("var(--hud)",14);SFX.correct();
     const pi=Math.floor(Math.random()*PRAISE.length);VO.say(PRAISE[pi]+q.w,[`praise_${pi}`]);}
   else{wrong.push({q:q.q,w:q.w});SFX.wrong();
@@ -1220,24 +1485,32 @@ function badge(n,pass){const g=pass?"#FFB259":"#5A5148";
    <path d="M30 62c-6-8-6-20 0-28M70 62c6-8 6-20 0-28"/>
    <text x="50" y="46" text-anchor="middle" font-family="serif" font-size="25" fill="${g}" stroke="none">${String(n).padStart(2,"0")}</text>
    <text x="50" y="64" text-anchor="middle" font-family="serif" font-size="8" fill="${g}" stroke="none" letter-spacing="3">${pass?"PASSED":"RETRY"}</text></svg>`;}
-async function finish(){
-  const total=qs.length,pct=Math.round(ok/total*100),pass=pct>=80,L=LV[cur-1];
-  const st=pct===100?3:(pct>=90?2:1);
-  if(pass){if(!S.best[cur]||pct>S.best[cur]){S.best[cur]=pct;S.stars[cur]=st;}
-    if(cur===S.unlocked&&cur<20)S.unlocked=cur+1;await save();}
+function finish(){
+  const total=qs.length,pct=Math.round(ok/total*100),need=passMark(cur),pass=pct>=need,L=LV[cur-1];
+  const st=starOf(cur);                          /* 星星＝本關目前的答對題數 */
+  if(!S.best[cur]||pct>S.best[cur])S.best[cur]=pct;   /* 解鎖以最佳成績為準，重做不會被鎖回去 */
+  save();
+  clearTimeout(syncTimer);
+  LB.submit(err=>{ if(!err)toast("進度已同步"); },true);
+  if(pass)setTimeout(()=>LB.record(cur,(er,d)=>{
+    if(!er&&d&&d.created)toast(`破關紀錄已登錄　★ ${totalStars()}`);
+  }),900);
   $("res-badge").innerHTML=badge(cur,pass);
   $("res-eyebrow").textContent=pass?"SKILL UNLOCKED":"NOT YET";
   $("res-score").textContent=pct;
-  $("res-stars").innerHTML=pass?[..."★".repeat(st)+"☆".repeat(3-st)].map((s,i)=>`<span style="animation-delay:${.3+i*.18}s">${s}</span>`).join(""):"";
-  $("res-msg").textContent=pass?`答對 ${ok} / ${total} 題　·　這項技能已收進徽章冊`:`答對 ${ok} / ${total} 題　·　需達 80% 才能通過，回去把教學再看一次`;
+  $("res-stars").innerHTML=[..."★".repeat(st)+"☆".repeat(total-st)].map((s,i)=>`<span style="animation-delay:${.25+i*.14}s">${s}</span>`).join("")
+    +`<div class="sub" style="letter-spacing:.1em;margin-top:6px">本關目前 ${st} / ${total} 顆星　·　累計 ★ ${totalStars()}</div>`;
+  $("res-msg").textContent=pass?`${who()}，答對 ${ok} / ${total} 題（${pct}%）　·　本關通過標準 ${need}%`
+    :`${who()}，答對 ${ok} / ${total} 題（${pct}%）　·　需達 ${need}% 才能解鎖下一關`;
   $("res-skill").innerHTML=pass?`<div class="eyebrow">SKILL ${String(cur).padStart(2,"0")} 解鎖</div><div class="v">${L.s}</div>`
     :`<div class="eyebrow">尚未解鎖</div><div class="v" style="color:var(--mute)">${L.s}</div>`;
   $("res-wrong").innerHTML=wrong.length?`<div class="hud"><div class="hud-title"><b>◀</b>錯題複習<b>▶</b></div>`+
     wrong.map(w=>`<p style="font-size:13.5px;margin-top:10px">${w.q}</p><div class="tip">${w.w}</div>`).join("")+`<div class="corner"></div></div>`:"";
-  const nx=$("res-next");
-  if(!pass)nx.style.display="none";
-  else if(cur>=20){nx.style.display="block";nx.textContent="查看侍酒師徽章冊";nx.onclick=renderBook;}
-  else{nx.style.display="block";nx.textContent="前往下一個場景";nx.onclick=()=>openLevel(cur+1);}
+  const nx=$("res-next"),U=maxUnlocked();
+  if(cur>=20&&pass){nx.style.display="block";nx.textContent="查看侍酒師徽章冊";nx.onclick=renderBook;}
+  else if(pass&&cur+1<=U){nx.style.display="block";nx.textContent="前往下一個場景";nx.onclick=()=>openLevel(cur+1);}
+  else if(pass&&cur===18){nx.style.display="block";nx.textContent="查看還缺哪些星星";nx.onclick=renderBook;}
+  else nx.style.display="none";
   paintCover();show("result");
   if(pass){setTimeout(()=>burst("var(--hud)",26),260);SFX.unlock();
     for(let i=0;i<st;i++)SFX.star(i);
@@ -1251,18 +1524,395 @@ $("res-map").onclick=renderMap;
 /* ---------- 徽章冊 ---------- */
 function renderBook(){
   setScene(0);
-  $("bk-sum").textContent=`已收藏 ${doneCount()} / 20 枚技能徽章`;
-  $("bk-grid").innerHTML=LV.map((L,i)=>{const n=i+1,got=(S.best[n]||0)>=80;
-    return `<div class="bcell ${got?'':'off'}" style="animation-delay:${i*.03}s"><div class="n">SKILL ${String(n).padStart(2,"0")}</div>
-      <div class="t">${got?L.s:"？？？"}</div><div class="s">${got?"★".repeat(S.stars[n]||1)+"　"+S.best[n]+"%":"未解鎖"}</div></div>`;}).join("");
+  $("bk-sum").innerHTML=`${who()}　·　★ ${totalStars()} / ${maxStars()}　·　已通過 ${doneCount()} / 20 關`
+    +(perfect18()?"":`<br><span style="color:var(--hud)">最後兩關需要前 18 關全對，目前還缺 ${(()=>{let m=0;for(let n=1;n<=18;n++)m+=QN(n)-starOf(n);return m;})()} 顆星</span>`);
+  $("bk-grid").innerHTML=LV.map((L,i)=>{const n=i+1,pass=everPassed(n),got=starOf(n),qn=QN(n);
+    return `<div class="bcell ${pass?'':'off'}" style="animation-delay:${i*.03}s"><div class="n">SKILL ${String(n).padStart(2,"0")}</div>
+      <div class="t">${pass?L.s:"？？？"}</div>
+      <div class="s starbig">${"★".repeat(got)}${"☆".repeat(qn-got)}</div>
+      <div class="s">${S.best[n]?S.best[n]+"%":"未挑戰"}</div></div>`;}).join("");
   show("book");
 }
 $("btn-book").onclick=renderBook;
 $("bk-back").onclick=renderMap;
 
+/* ---------- 線上排行榜 ---------- */
+const DEFAULT_API="https://script.google.com/macros/s/AKfycbw1rPk5iI_mN9MplxvC2Il8xzllF0nbZQhTM1SMHxqRHgcdA99CBhkY5inyq_fz48_-mQ/exec";
+const LB={
+  cache:[], msg:"", state:"未同步", lastOk:0, pending:false, fetchedAt:0, syncedStars:-1,
+  api(){ const a=(S.api||"").trim(); return a||DEFAULT_API; },
+  _cbs:{}, _n:0,
+  /* APK 內走原生 HTTP（不受 CORS 限制），其餘環境用 fetch / JSONP */
+  nativeGet(url,cb){
+    const id="n"+(++this._n);
+    this._cbs[id]=cb;
+    const timer=setTimeout(()=>{ if(this._cbs[id]){delete this._cbs[id];cb("ERR:timeout",0);} },20000);
+    this._cbs[id]=(body,code)=>{ clearTimeout(timer); cb(body,code); };
+    try{ window.AndroidNet.get(url,id); }
+    catch(e){ clearTimeout(timer); delete this._cbs[id]; cb("ERR:bridge",0); }
+  },
+  /* 先用 fetch（能取得 HTTP 狀態與錯誤內容），失敗再退回 JSONP */
+  request(qs,cb){
+    const api=this.api(); if(!api){cb("尚未設定伺服器");return;}
+    const url=api+(api.indexOf("?")<0?"?":"&")+qs+"&_t="+Date.now();
+
+    /* file:// 來源的 fetch 必定被 CORS 擋下，直接走 JSONP */
+    if(!window.AndroidNet&&location.protocol==="file:"){ this.diagHttp="file: 來源，改用 JSONP"; this.jsonp(qs,cb); return; }
+
+    if(window.AndroidNet&&window.AndroidNet.get){
+      this.nativeGet(url,(raw,code)=>{
+        let p={};
+        try{ p=JSON.parse(raw); }catch(e){ p={code:code,body:String(raw||""),err:"bridge parse"}; }
+        this.diagNet=p;
+        const t=String(p.body||"").trim();
+        if(p.err){ this.diagHttp="原生錯誤："+String(p.err).slice(0,50); this.jsonp(qs,cb); return; }
+        if(String(p.url||"").indexOf("accounts.google.com")>=0){
+          this.diagHttp="伺服器要求登入：請將 Apps Script 部署的「具有存取權的使用者」改為「知道連結的任何人」";
+          this.needAuthFix=true; this.jsonp(qs,cb); return;
+        }
+        if(!t){ this.diagHttp="HTTP "+p.code+" 但內容為空（"+(p.ctype||"?")+"）"; this.jsonp(qs,cb); return; }
+        if(t.indexOf("<")===0){ this.diagHttp="HTTP "+p.code+"：伺服器回傳網頁（多半是需要登入）"; this.jsonp(qs,cb); return; }
+        /* JSONP 格式 x({...}); 也一併支援 */
+        const m=t.match(/^[\w$]+\((\{[\s\S]*\})\);?$/);
+        try{ cb(null,JSON.parse(m?m[1]:t)); }
+        catch(e){ this.diagHttp="回應非 JSON（HTTP "+p.code+"，"+t.slice(0,30)+"）"; this.jsonp(qs,cb); }
+      });
+      return;
+    }
+    let handled=false;
+    const fallback=(why)=>{ if(handled)return; handled=true; this.diagHttp=why; this.jsonp(qs,cb); };
+    try{
+      if(!window.fetch){fallback("no fetch");return;}
+      const timer=setTimeout(()=>fallback("fetch timeout"),8000);
+      fetch(url,{cache:"no-store",redirect:"follow"})
+        .then(r=>r.text().then(t=>({status:r.status,text:t})))
+        .then(o=>{
+          clearTimeout(timer);
+          if(handled)return;
+          const t=(o.text||"").trim();
+          if(t.indexOf("<")===0){ fallback("HTTP "+o.status+"：伺服器回傳網頁（多半是需要登入）"); return; }
+          try{ handled=true; cb(null,JSON.parse(t)); }
+          catch(e){ fallback("回應格式錯誤"); }
+        })
+        .catch(()=>{ clearTimeout(timer); fallback("fetch 失敗（可能是跨網域限制）"); });
+    }catch(e){ fallback("fetch 例外"); }
+  },
+  diagHttp:"", diagNet:null, needAuthFix:false,
+  jsonp(qs,cb){
+    const api=this.api(); if(!api){cb("尚未設定伺服器");return;}
+    const url=api+(api.indexOf("?")<0?"?":"&")+qs;
+    const name="__lb"+Math.floor(Math.random()*1e6);
+    const s=document.createElement("script");
+    let done=false;
+    window[name]=function(d){done=true;cleanup();cb(null,d);};
+    function cleanup(){try{delete window[name];}catch(e){window[name]=undefined;}
+      if(s.parentNode)s.parentNode.removeChild(s);}
+    s.onerror=function(){ if(!done){done=true;cleanup();cb("連線失敗");} };
+    s.src=url+"&_t="+Date.now()+"&callback="+name;
+    document.head.appendChild(s);
+    setTimeout(function(){ if(!done){done=true;cleanup();cb("連線逾時"+(LB.diagHttp?"（"+LB.diagHttp+"）":""));} },25000);
+  },
+  /* 備援：某些環境會擋外部 script，改用 no-cors 送出（寫入會成功，只是讀不到回應） */
+  beacon(qs){
+    const api=this.api();
+    try{ fetch(api+(api.indexOf("?")<0?"?":"&")+qs,{mode:"no-cors",cache:"no-store"}); return true; }
+    catch(e){ return false; }
+  },
+  submit(cb,force){
+    if(!S.name){ this.state="尚未設定名稱"; if(cb)cb("no name"); return; }
+    if(!force&&this.syncedStars===totalStars()&&this.lastOk){   /* 沒有新進度就不必再送 */
+      if(cb)cb(null,{skipped:true}); return; }
+    const prog=JSON.stringify({q:S.qc||{},b:S.best||{}});
+    const qs="action=submit&uid="+encodeURIComponent(S.uid||"")
+      +"&name="+encodeURIComponent(S.name)
+      +"&stars="+totalStars()+"&passed="+doneCount()
+      +"&ts="+(S.achievedAt||Date.now())
+      +"&data="+encodeURIComponent(prog);
+    this.state="上傳中……"; this.pending=true;
+    this.request(qs,(err,d)=>{
+      this.pending=false;
+      if(err){
+        const sent=this.beacon(qs);
+        this.state=sent?"已送出（未取得回應）":"上傳失敗："+err;
+        this.msg=this.state;
+        setTimeout(()=>{ if(!this.pending)this.retry(qs); },3000);
+        setTimeout(()=>{ if(!this.lastOk)this.retry(qs); },12000);
+      }else{
+        this.lastOk=Date.now();
+        this.syncedStars=totalStars();
+        this.state="已同步　"+fmtTime(this.lastOk);
+        this.msg=this.state;
+      }
+      if(typeof paintVoicePanel==="function")paintVoicePanel();
+      if(cb)cb(err,d);
+    });
+  },
+  retry(qs){
+    this.request(qs,(err)=>{
+      if(!err){ this.lastOk=Date.now(); this.state="已同步　"+fmtTime(this.lastOk);
+        this.msg=this.state; if(typeof paintVoicePanel==="function")paintVoicePanel(); }
+    });
+  },
+  /* 通關時登錄一筆永久紀錄；只新增不覆寫，重玩失手不會洗掉舊成績 */
+  record(level,cb){
+    if(!S.name||!S.uid){ if(cb)cb("no player"); return; }
+    const qs="action=record&uid="+encodeURIComponent(S.uid)
+      +"&name="+encodeURIComponent(S.name)
+      +"&stars="+totalStars()+"&passed="+doneCount()
+      +"&level="+(level||0)+"&ts="+Date.now();
+    this.request(qs,(err,d)=>{
+      if(!err&&d&&d.created){ this.fetchedAt=0; setTimeout(()=>this.top(()=>{}),500); }
+      if(cb)cb(err,d);
+    });
+  },
+  top(cb,tries){
+    tries=tries||0;
+    this.request("action=top&limit=20",(err,d)=>{
+      if(err){
+        if(tries<2){                                  /* 伺服器冷啟動較慢，自動重試 */
+          this.state="重新連線中（第 "+(tries+2)+" 次）";
+          if(typeof $==="function"&&$("rk-sum"))$("rk-sum").textContent="伺服器喚醒中，重新連線……";
+          setTimeout(()=>this.top(cb,tries+1),1500);
+          return;
+        }
+        cb(err);return;
+      }
+      const rows=(d&&d.rows)||[];
+      rows.sort((a,b)=> (b.stars-a.stars) || (a.ts-b.ts));
+      this.cache=rows; this.fetchedAt=Date.now();
+      S.lb={rows:rows.slice(0,30),at:this.fetchedAt}; save();   /* 存起來，下次秒開 */
+      cb(null,rows);
+    });
+  }
+};
+
+window.__net=function(id,body,code){
+  const h=LB._cbs[id];
+  if(h){ delete LB._cbs[id]; h(body,code); }
+};
+
+const CODE_SET="ABCDEFGHJKLMNPQRSTUVWXYZ0123456789";
+const cleanCode=v=>String(v||"").toUpperCase().split("").filter(c=>CODE_SET.indexOf(c)>=0).join("");
+/* 系統產生的代碼不含 O I，若查無資料再自動嘗試 0↔O、1↔I 的可能寫法 */
+function codeVariants(c){
+  const out=[c], swap=[["0","O"],["O","0"],["1","I"],["I","1"]];
+  swap.forEach(([a,b])=>{ if(c.indexOf(a)>=0){const v=c.split(a).join(b); if(out.indexOf(v)<0)out.push(v);} });
+  if(c.indexOf("0")>=0&&c.indexOf("1")>=0){const v=c.split("0").join("O").split("1").join("I"); if(out.indexOf(v)<0)out.push(v);}
+  return out.slice(0,5);
+}
+LB.restore=function(code,cb){
+  const base=cleanCode(String(code).trim());
+  if(base.length<4){cb("代碼至少 4 碼");return;}
+  const list=codeVariants(base);
+  let i=0;
+  const tryNext=()=>{
+    if(i>=list.length){cb("查無此代碼（請確認是原裝置 ⚙ 顯示的代碼，且該裝置已上傳過成績）");return;}
+    const c=list[i++];
+    LB.request("action=get&uid="+encodeURIComponent(c),(err,d)=>{
+      if(err){cb(err);return;}
+      if(d&&d.error==="unknown action"){
+        cb("伺服器版本過舊：請把最新的 leaderboard.gs 貼進 Apps Script，並以「新版本」重新部署");return;}
+      if(d&&d.ok&&d.row){ d.row.uid=d.row.uid||c; cb(null,d.row); return; }
+      tryNext();
+    });
+  };
+  tryNext();
+};
+function doRestore(code,msgEl){
+  const el=$(msgEl);
+  if(el)el.textContent="查詢中……";
+  LB.restore(code,(err,row)=>{
+    if(err){ if(el)el.textContent="還原失敗："+err; toast("還原失敗"); return; }
+    ask("還原雲端進度",
+        `找到「${row.name||"未命名"}」的成績：★ ${row.stars}。還原後將以雲端進度取代這台裝置目前的紀錄，確定嗎？`,
+        ()=>{
+          S.uid=String(row.uid||code).toUpperCase();
+          if(row.name)S.name=row.name;
+          try{
+            const d=JSON.parse(row.data||"{}");
+            if(d.q)S.qc=d.q;
+            else if(d.c){S.qc={};for(const k in d.c){const n=+k,a=[];
+              for(let i=0;i<QN(n);i++)a.push(i<(d.c[k]||0));S.qc[k]=a;}}
+            if(d.b)S.best=d.b;
+          }catch(e){}
+          S.achievedAt=row.ts||Date.now();
+          save();paintCover();paintVoicePanel();
+          if(el)el.textContent=`已還原：${S.name}　★ ${totalStars()}`;
+          toast(`已還原 ★ ${totalStars()}`);
+          renderMap();
+        });
+  });
+}
+function tidyCode(el){
+  if(!el)return;
+  el.oninput=()=>{ const v=cleanCode(el.value).slice(0,10); if(v!==el.value)el.value=v; };
+}
+tidyCode($("rs-code")); tidyCode($("nm-code")); tidyCode($("cs-code"));
+
+/* 自訂代碼：改用自己好記的字串 */
+$("cs-go").onclick=()=>{
+  const c=cleanCode($("cs-code").value);
+  const msg=$("cs-msg");
+  if(c.length<4||c.length>10){msg.textContent="代碼請輸入 4～10 碼（英文或數字）";return;}
+  if(c===S.uid){msg.textContent="這已經是你目前的代碼了";return;}
+  msg.textContent="檢查代碼是否已被使用……";
+  LB.request("action=get&uid="+encodeURIComponent(c),(err,d)=>{
+    if(err){msg.textContent="無法連線伺服器："+err;return;}
+    if(d&&d.row){msg.textContent="這組代碼已有人使用（"+(d.row.name||"未命名")+"），請換一組";return;}
+    ask("更改玩家代碼",
+        `要把你的專屬代碼改成「${c}」嗎？\n\n這台裝置之後會以新代碼上傳成績。舊代碼「${S.uid}」的雲端紀錄不會被刪除，日後輸入它仍可救回。`,
+        ()=>{ S.uid=c; save(); paintVoicePanel(); LB.submit(()=>{});
+              msg.textContent="已改為 "+c+"，成績已重新上傳"; toast("代碼已更新"); });
+  });
+};
+$("rs-go").onclick=()=>doRestore($("rs-code").value,"rs-msg");
+$("nm-restore").onclick=()=>doRestore($("nm-code").value,"nm-msg");
+
+LB.diagnose=function(cb){
+  const lines=[];
+  const api=LB.api();
+  lines.push("端點："+api.slice(0,52)+"…");
+  lines.push("網路狀態："+(navigator.onLine===false?"離線":"連線中"));
+  lines.push("環境："+(window.AndroidTTS?"Android APK":(location.protocol||"?")));
+  lines.push("原生網路橋接："+(window.AndroidNet&&window.AndroidNet.get?"可用":"不可用"));
+  const url=api+(api.indexOf("?")<0?"?":"&")+"action=top&limit=1&_t="+Date.now();
+  const show=()=>cb(lines.join("\n"));
+
+  const testJsonp=()=>{
+    const name="__dg"+Math.floor(Math.random()*1e6);
+    const s=document.createElement("script"); let done=false;
+    window[name]=function(d){done=true;lines.push("JSONP：成功（共 "+((d&&d.total)||0)+" 筆）");clean();show();};
+    function clean(){try{delete window[name];}catch(e){}if(s.parentNode)s.parentNode.removeChild(s);}
+    s.onerror=function(){if(!done){done=true;lines.push("JSONP：失敗（script 無法載入）");clean();show();}};
+    s.src=url+"&callback="+name;
+    document.head.appendChild(s);
+    setTimeout(()=>{if(!done){done=true;lines.push("JSONP：逾時（15 秒無回應）");clean();show();}},15000);
+  };
+
+  if(window.AndroidNet&&window.AndroidNet.get){
+    LB.nativeGet(url,(raw,code)=>{
+      let p={};try{p=JSON.parse(raw);}catch(e){p={code:code,body:String(raw||"")};}
+      lines.push("HTTP："+p.code+"　長度 "+(p.len!=null?p.len:"?")+"　型別 "+String(p.ctype||"?").slice(0,28));
+      if(p.err)lines.push("錯誤："+String(p.err).slice(0,60));
+      if(p.url&&p.url!==url)lines.push("最終網址："+String(p.url).slice(0,60)+"…");
+      lines.push("內容："+String(p.body||"(空)").slice(0,60).replace(/\s+/g," "));
+      show();
+    });
+    return;
+  }
+  if(!window.fetch){lines.push("fetch：此環境不支援");testJsonp();return;}
+  const t=setTimeout(()=>{lines.push("fetch：逾時");testJsonp();},8000);
+  fetch(url,{cache:"no-store"})
+    .then(r=>r.text().then(x=>({s:r.status,x})))
+    .then(o=>{clearTimeout(t);
+      lines.push("fetch：HTTP "+o.s+"　"+(o.x.trim().slice(0,40).replace(/\s+/g," ")));
+      testJsonp();})
+    .catch(err=>{clearTimeout(t);
+      lines.push("fetch：被拒（"+String(err).slice(0,40)+"）");
+      testJsonp();});
+};
+
+function fmtTime(ms){
+  const d=new Date(+ms||Date.now()),p=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function renderRank(){
+  setScene(0);show("rank");
+  $("rk-toggle").textContent=S.rkBest?"☰ 顯示全部紀錄":"★ 只看每人最佳";
+  const list=$("rk-list");
+  const mine=`<div class="rank-row me"><div class="no">我</div>
+      <div class="who"><b>${S.name||"未命名"}</b><span>更新 ${fmtTime(S.achievedAt)}</span></div>
+      <div class="st">★ ${totalStars()}</div></div>`;
+  if(!LB.api()){
+    $("rk-sum").textContent="尚未連線排行榜伺服器，目前僅顯示本機成績。";
+    list.innerHTML=mine;return;
+  }
+  if(LB.cache.length){
+    paintRows(LB.cache);
+    const age=Math.round((Date.now()-(LB.fetchedAt||0))/1000);
+    $("rk-sum").textContent=`${LB.cache.length} 位學員　·　${age<60?age+" 秒前":Math.round(age/60)+" 分鐘前"}的資料，更新中……`;
+  }else{
+    $("rk-sum").textContent="讀取中……（首次連線需喚醒伺服器，約 10 秒）";
+    list.innerHTML=mine;
+  }
+  function paintRows(rows){
+    let view=rows;
+    const cnt={};rows.forEach(r=>{const k=r.uid||r.name;cnt[k]=(cnt[k]||0)+1;});
+    if(S.rkBest){                       /* 只看每人最佳：已排序，同代碼取第一筆 */
+      const seen={};view=[];
+      rows.forEach(r=>{const k=r.uid||r.name;if(!seen[k]){seen[k]=1;view.push(r);}});
+    }
+    list.innerHTML=view.map((r,i)=>{
+      const me=(r.uid&&r.uid===S.uid)||r.name===S.name;
+      const n=cnt[r.uid||r.name]||1;
+      return `<div class="rank-row ${me?"me":""} ${i===0?"top1":""}" style="animation-delay:${i*.02}s">
+        <div class="no">${i+1}</div>
+        <div class="who"><b>${String(r.name||"").replace(/[<>]/g,"")}</b>
+          <span>${fmtTime(r.ts)} 完成${(S.rkBest&&n>1)?`　·　共 ${n} 筆`:""}</span></div>
+        <div class="st">★ ${r.stars}</div></div>`;}).join("")||mine;
+  }
+  const draw=(err,rows)=>{
+    if(err){
+      $("rk-sum").innerHTML = LB.needAuthFix
+        ? "<span style=\"color:var(--hud)\">伺服器要求登入</span><br>請到 Apps Script →「管理部署作業」→ 將「具有存取權的使用者」改為「知道連結的任何人」→ 版本選「新版本」→ 部署。"
+        : "無法連線（"+err+"）　·　"+LB.state+"，僅顯示本機成績。";
+      return;}
+    const ppl=Object.keys(rows.reduce((a,r)=>{a[r.uid||r.name]=1;return a;},{})).length;
+    $("rk-sum").textContent=`${ppl} 位學員　·　${rows.length} 筆破關紀錄　·　星星多者在前，同分先完成者在前`;
+    paintRows(rows);
+  };
+  LB.top((err,rows)=>{
+    draw(err,rows);
+    /* 讀取完成後再背景上傳，避免兩個請求同時打到 Apps Script 造成排隊 */
+    if(LB.syncedStars!==totalStars())
+      setTimeout(()=>LB.submit(er=>{ if(!er)setTimeout(()=>LB.top(draw),600); }),700);
+  });
+}
+$("btn-rank").onclick=renderRank;
+$("rk-back").onclick=renderMap;
+$("rk-refresh").onclick=()=>{LB.submit(()=>renderRank());};
+$("rk-toggle").onclick=()=>{
+  S.rkBest=!S.rkBest;save();
+  $("rk-toggle").textContent=S.rkBest?"☰ 顯示全部紀錄":"★ 只看每人最佳";
+  renderRank();
+};
+$("rk-diag").onclick=()=>{
+  $("rk-sum").textContent="診斷中，請稍候……";
+  LB.diagnose(txt=>{ $("rk-sum").innerHTML=txt.replace(/\n/g,"<br>"); });
+};
+
+/* ---------- 玩家名稱 ---------- */
+function askName(){
+  $("nm-input").value=S.name||"";
+  show("name");
+  setTimeout(()=>{try{$("nm-input").focus();}catch(e){}},300);
+}
+$("nm-ok").onclick=()=>{
+  const v=($("nm-input").value||"").trim().slice(0,16);
+  if(!v){toast("請輸入學號＋姓名");return;}
+  S.name=v; if(!S.achievedAt)S.achievedAt=Date.now();
+  save(); LB.submit(()=>{}); paintVoicePanel(); renderMap();
+};
+$("pl-name").onchange=()=>{
+  const v=($("pl-name").value||"").trim().slice(0,16);
+  if(v){S.name=v;save();LB.submit();toast("名稱已更新");}
+};
+$("lb-api").onchange=()=>{
+  S.api=($("lb-api").value||"").trim(); save();
+  $("lb-msg").textContent=S.api?"已改用自訂伺服器。":"已還原為內建的班級排行榜伺服器。";
+  LB.submit(()=>{$("lb-msg").textContent=LB.msg;});
+};
+$("lb-push").onclick=()=>{
+  $("lb-msg").textContent="上傳中……";
+  LB.submit(()=>{$("lb-msg").textContent=LB.msg;});
+};
+
 /* ---------- 版本 ---------- */
-const APP_VER="1.0.0", APP_BUILD="2026.07";
-(function(){const el=$("app-ver"); if(el)el.textContent=`VERSION ${APP_VER}　·　BUILD ${APP_BUILD}`;})();
+const APP_VER="1.1.0", APP_BUILD="2026.08";
+(function(){const el=$("app-ver"); if(!el)return;
+  const bridge=(window.AndroidNet&&window.AndroidNet.get)?"NET-OK":(window.AndroidTTS?"NET-MISSING":"WEB");
+  el.textContent=`VERSION ${APP_VER}　·　BUILD ${APP_BUILD}　·　${bridge}`;})();
 
 /* ---------- 啟動 ---------- */
 const VPRESET=[
@@ -1270,16 +1920,31 @@ const VPRESET=[
  {k:"更甜",p:1.35,r:.96,d:"再高再慢"},
  {k:"柔和",p:1.14,r:.92,d:"溫柔親切"},
  {k:"標準",p:1.00,r:1.10,d:"原始音色"}];
-async function applyPreset(v){
-  VO.pitch=v.p;VO.rate=v.r;S.pitch=v.p;S.rate=v.r;await save();paintVoicePanel();VO.preview();}
+function applyPreset(v){
+  VO.pitch=v.p;VO.rate=v.r;S.pitch=v.p;S.rate=v.r;save();paintVoicePanel();VO.preview();}
 function paintVoicePanel(){
+  const pn=$("pl-name"); if(pn&&document.activeElement!==pn)pn.value=S.name||"";
+  const pa=$("lb-api"); if(pa&&document.activeElement!==pa)pa.value=S.api||"";
+  const lm=$("lb-msg");
+  if(lm)lm.textContent=`${S.name?"玩家 "+S.name:"尚未設定名稱"}　·　★ ${totalStars()}　·　${LB.state}`;
+  const ps=$("pl-stars"); if(ps)ps.textContent=`★ ${totalStars()}`;
+  const pc=$("pl-code");
+  if(pc){pc.textContent=S.uid||"------";pc.style.letterSpacing=".22em";pc.style.cursor="pointer";
+    pc.onclick=()=>{try{navigator.clipboard.writeText(S.uid||"");toast("代碼已複製："+S.uid);}catch(e){toast("代碼："+S.uid);}};}
   const sel=$("vo-pick"); if(!sel)return;
   VO.refresh();
   sel.innerHTML=VO.list.map(v=>`<option value="${v.name}"${VO.voice&&v.name===VO.voice.name?" selected":""}>${v.label||v.name}${/natural|neural|online/i.test(v.name)?"（自然語音）":""}</option>`).join("");
-  $("vo-count").textContent=VO.files?`預錄語音 ${VO.files.size} 段`:(VO.list.length?`${VO.native()?"系統語音":"瀏覽器語音"} ${VO.list.length} 種`:"未偵測到");
+  const hasNative=!!window.AndroidTTS, noVoice=!VO.files&&!VO.list.length;
+  $("vo-count").textContent = VO.mode==="files" ? "語音包（預錄）"
+    : VO.files ? `語音包 ${VO.files.size} 段`
+    : VO.mode==="auto" ? "語音包優先，尚未播放"
+    : (VO.list.length?`${VO.native()?"系統語音":"瀏覽器語音"} ${VO.list.length} 種`:"未偵測到");
+  const fix=$("tts-fix"); if(fix)fix.style.display=(hasNative&&VO.mode==="tts"&&noVoice)?"block":"none";
+  if(sel)sel.disabled=(VO.mode==="files");
   const plat=VO.platform()==="mobile"?"手機":"網頁";
   $("vo-hint").textContent = VO.files ? "已載入預錄的 zh-TW-HsiaoChen 語音檔，音調與語速調整不影響預錄音檔。"
-    : VO.native() ? `使用 Android 系統語音引擎（${plat}版預設為清單第 3 個語音、標準音色）。若音質不佳，可到手機設定 → 系統 → 文字轉語音，安裝 Google 文字轉語音並下載中文（台灣）。`
+    : VO.native() ? `使用 Android 系統語音引擎（${plat}版預設為清單第 3 個語音、標準音色）。`
+    : (hasNative && noVoice) ? "未偵測到中文語音。請依下方按鈕安裝語音資料，或改用內建語音包版本（音質最佳且不需任何設定）。"
     : VO.list.length
     ? (/natural|neural|online/i.test((VO.voice&&VO.voice.name)||"") ? "目前使用神經網路語音，音質最接近真人。"
        : "若覺得不夠柔美：Android 請到「設定 → 系統 → 語言與輸入 → 文字轉語音」安裝 Google 語音並下載中文語音包；電腦上用 Edge 開啟可取得最自然的曉臻／雅婷語音。")
@@ -1291,6 +1956,8 @@ function paintVoicePanel(){
     box.querySelectorAll(".pchip").forEach(b=>b.onclick=()=>applyPreset(VPRESET[+b.dataset.i]));}
   const hit=VPRESET.find(v=>Math.abs(VO.pitch-v.p)<.005&&Math.abs(VO.rate-v.r)<.005);
   $("vo-now").textContent=hit?hit.k:`自訂 ${VO.pitch.toFixed(2)} / ${VO.rate.toFixed(2)}`;
+  const dg=$("vo-diag");
+  if(dg)dg.textContent=`路徑 ${VO.base}${VO.ext}　清單：${VO.diag.xhr}　探測：${VO.diag.probe}　播放：${VO.diag.play}`;
   $("vo-p-val").textContent=VO.pitch.toFixed(2);
   $("vo-r-val").textContent=VO.rate.toFixed(2);
   $("vo-pitch").value=VO.pitch; $("vo-rate").value=VO.rate;
@@ -1298,16 +1965,22 @@ function paintVoicePanel(){
 $("tg-set").onclick=()=>{SFX.init();paintVoicePanel();$("voset").classList.add("on");};
 $("vo-close").onclick=()=>{$("voset").classList.remove("on");VO.stop();};
 $("voset").onclick=e=>{if(e.target.id==="voset"){$("voset").classList.remove("on");VO.stop();}};
-$("vo-pick").onchange=async e=>{VO.use(e.target.value);S.voiceName=e.target.value;await save();VO.preview();};
+$("vo-pick").onchange=e=>{VO.use(e.target.value);S.voiceName=e.target.value;save();VO.preview();};
 $("vo-pitch").oninput=e=>{VO.pitch=+e.target.value;$("vo-p-val").textContent=VO.pitch.toFixed(2);};
 $("vo-rate").oninput=e=>{VO.rate=+e.target.value;$("vo-r-val").textContent=VO.rate.toFixed(2);};
-$("vo-pitch").onchange=async e=>{S.pitch=VO.pitch;await save();paintVoicePanel();VO.preview();};
-$("vo-rate").onchange=async e=>{S.rate=VO.rate;await save();paintVoicePanel();VO.preview();};
+$("vo-pitch").onchange=e=>{S.pitch=VO.pitch;save();paintVoicePanel();VO.preview();};
+$("vo-rate").onchange=e=>{S.rate=VO.rate;save();paintVoicePanel();VO.preview();};
 $("vo-try").onclick=()=>{SFX.init();VO.preview();};
+$("vo-test").onclick=()=>{SFX.init();$("vo-diag").textContent="測試中……";
+  VO.test(r=>{$("vo-diag").textContent="語音包測試："+r;});};
+$("tts-install").onclick=()=>{try{window.AndroidTTS.installVoiceData();}catch(e){toast("此裝置無法自動安裝");}};
+$("tts-settings").onclick=()=>{try{window.AndroidTTS.openSettings();}catch(e){toast("請手動至系統設定開啟");}};
+$("tts-retry").onclick=()=>{try{window.AndroidTTS.reload();toast("正在重新偵測……");
+  [800,2000,4000].forEach(t=>setTimeout(()=>{VO.refresh();paintVoicePanel();},t));}catch(e){}};
 $("bgm-vol").oninput=e=>{BGM.setVol(+e.target.value/100);$("bgm-val").textContent=e.target.value+"%";};
-$("bgm-vol").onchange=async e=>{S.bgmVol=BGM.vol;await save();};
-$("vo-def").onclick=async()=>{VO.pitch=VO.DEF.pitch;VO.rate=VO.DEF.rate;
-  S.pitch=VO.pitch;S.rate=VO.rate;await save();paintVoicePanel();toast(`已還原預設 ${VO.DEF.pitch.toFixed(2)} / ${VO.DEF.rate.toFixed(2)}`);VO.preview();};
+$("bgm-vol").onchange=e=>{S.bgmVol=BGM.vol;save();};
+$("vo-def").onclick=()=>{VO.pitch=VO.DEF.pitch;VO.rate=VO.DEF.rate;
+  S.pitch=VO.pitch;S.rate=VO.rate;save();paintVoicePanel();toast(`已還原預設 ${VO.DEF.pitch.toFixed(2)} / ${VO.DEF.rate.toFixed(2)}`);VO.preview();};
 
 function setLite(on){
   document.body.classList.toggle("lite",!!on);
@@ -1315,8 +1988,8 @@ function setLite(on){
   const a=$("lite-on"),b=$("lite-off");
   if(a&&b){a.classList.toggle("on",!!on);b.classList.toggle("on",!on);}
 }
-$("lite-on").onclick=async()=>{S.lite=true;setLite(true);await save();toast("省電模式已開啟");};
-$("lite-off").onclick=async()=>{S.lite=false;setLite(false);await save();toast("完整動畫模式");};
+$("lite-on").onclick=()=>{S.lite=true;setLite(true);save();toast("省電模式已開啟");};
+$("lite-off").onclick=()=>{S.lite=false;setLite(false);save();toast("完整動畫模式");};
 function goHome(){VO.stop();setScene(0);paintCover();show("cover");window.scrollTo(0,0);}
 $("tg-home").onclick=goHome;
 document.addEventListener("visibilitychange",()=>{
@@ -1331,13 +2004,31 @@ function paintAudio(){
   $("tg-vo").textContent=(VO.on?"🔊":"🔇")+" 女聲旁白";
   $("tg-sfx").className="abtn"+(SFX.on?"":" off");
   $("tg-sfx").textContent=(SFX.on?"♪":"♪̸")+" 音效";}
-$("tg-vo").onclick=async()=>{VO.on=!VO.on;S.voice=VO.on;if(!VO.on)VO.stop();else VO.preview();paintAudio();await save();};
-$("tg-bgm").onclick=async()=>{BGM.on=!BGM.on;S.bgm=BGM.on;
+$("tg-vo").onclick=()=>{VO.on=!VO.on;S.voice=VO.on;if(!VO.on)VO.stop();else VO.preview();paintAudio();save();};
+$("tg-bgm").onclick=()=>{BGM.on=!BGM.on;S.bgm=BGM.on;
   if(BGM.on){BGM.init();BGM.start();toast("背景音樂開啟");}else{BGM.stop();}
-  paintAudio();await save();};
-$("tg-sfx").onclick=async()=>{SFX.on=!SFX.on;S.sfx=SFX.on;if(SFX.on){SFX.init();SFX.clink();}paintAudio();await save();};
+  paintAudio();save();};
+$("tg-sfx").onclick=()=>{SFX.on=!SFX.on;S.sfx=SFX.on;if(SFX.on){SFX.init();SFX.clink();}paintAudio();save();};
 document.addEventListener("click",e=>{const b=e.target.closest(".btn");if(b&&!b.disabled)SFX.press();});
-$("btn-start").onclick=()=>{SFX.init();BGM.start();VO.say("歡迎來到侍酒師學院。我是今晚陪您練習的旁白，接下來二十個場景，我會一路陪著您。準備好了嗎，我們從第一關開始。","sys_intro");renderMap();};
-$("btn-reset").onclick=async()=>{S={unlocked:1,best:{},stars:{}};await save();paintCover();toast("學習紀錄已清除");};
+$("btn-start").onclick=()=>{SFX.init();BGM.start();if(!S.name){askName();return;}VO.say("歡迎來到侍酒師學院。我是今晚陪您練習的旁白，接下來二十個場景，我會一路陪著您。準備好了嗎，我們從第一關開始。","sys_intro");renderMap();};
+$("btn-reset").onclick=()=>{
+  ask("回復出廠設定",
+      `這台裝置的名稱、進度與 ★ ${totalStars()} 顆星將被清空，並改用一組全新的玩家代碼。\n\n雲端成績不會被刪除：舊代碼「${S.uid||"------"}」的紀錄仍保留在排行榜，日後輸入它即可完整救回。建議先記下這組代碼。`,
+      ()=>{
+        /* 完全回到初始狀態，連玩家身分都重新產生 */
+        S={ name:"", uid:newCode(), best:{}, qc:{}, achievedAt:0, api:"" };
+        VO.on=true; SFX.on=true; BGM.on=true; BGM.setVol(.5);
+        VO.wanted=null; VO.voice=null;
+        VO.pitch=VO.DEF.pitch; VO.rate=VO.DEF.rate;
+        VO.refresh();
+        const isMobile=/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)||!!window.AndroidTTS;
+        setLite(isMobile);
+        save();
+        paintAudio(); paintVoicePanel(); paintCover();
+        VO.stop();
+        toast("已回復出廠設定");
+        show("cover"); window.scrollTo(0,0);
+      });};
 setScene(0);load();
+setTimeout(()=>{ if(S.name)LB.top(()=>{}); },2500);        /* 開場先暖機，之後開排行榜就是秒開 */
 </script>
