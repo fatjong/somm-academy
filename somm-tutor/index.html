@@ -845,26 +845,42 @@ function pickVoice(){
              .map(function(v){return {v:v,s:scoreVoice(v)}})
              .sort(function(a,b){return b.s-a.s})
              .map(function(o){return o.v});
+  /* 選定語音：不依賴任何 UI 元素，介面隱藏時也必須生效 */
+  if(zhVoices.length){
+    var keep=chosenVoice?chosenVoice.name:null, idx=0;
+    if(keep) zhVoices.forEach(function(v,i){ if(v.name===keep) idx=i });
+    chosenVoice=zhVoices[idx];
+  }else{
+    chosenVoice=null;
+  }
   var sel=document.getElementById('voicesel');
   if(sel){
     if(!zhVoices.length){
       sel.innerHTML='<option>找不到中文語音</option>';
     }else{
-      var keep=chosenVoice?chosenVoice.name:null, h='';
+      var h='';
       zhVoices.forEach(function(v,i){
-        var tag=(v.localService===false?'雲端':'本機');
-        h+='<option value="'+i+'">'+v.name+'（'+v.lang+'・'+tag+'）</option>';
+        h+='<option value="'+i+'">'+v.name+'（'+v.lang+'・'+(v.localService===false?'雲端':'本機')+'）</option>';
       });
       sel.innerHTML=h;
-      var idx=0;
-      if(keep){ zhVoices.forEach(function(v,i){ if(v.name===keep) idx=i }); }
-      sel.value=String(idx);
-      chosenVoice=zhVoices[idx];
+      sel.value=String(zhVoices.indexOf(chosenVoice));
     }
   }
   reportVoice();
 }
 function reportVoice(){
+  /* 網址加上 ?voice 會在畫面下方顯示實際選用的語音，用來排查發音不對的問題 */
+  if(/[?&]voice\b/.test(location.search)){
+    var dbg=document.getElementById('voicedbg');
+    if(!dbg){
+      dbg=document.createElement('div'); dbg.id='voicedbg';
+      dbg.style.cssText='position:fixed;left:8px;bottom:8px;z-index:90;background:var(--ink);color:var(--paper);font-size:11px;padding:6px 11px;border-radius:4px;max-width:86vw;line-height:1.5';
+      document.body.appendChild(dbg);
+    }
+    dbg.textContent = chosenVoice
+      ? ('語音：'+chosenVoice.name+'｜'+chosenVoice.lang+'｜'+(chosenVoice.localService===false?'雲端':'本機')+'　候選 '+zhVoices.length+' 個')
+      : ('尚未選到中文語音，候選 '+zhVoices.length+' 個');
+  }
   var el=document.getElementById('vinfo');
   if(!el) return;
   if(!synth){ el.textContent='這個瀏覽器不支援語音合成。'; return }
@@ -888,7 +904,12 @@ function reportVoice(){
     el.innerHTML='目前：'+(chosenVoice?chosenVoice.name:'預設')+'（'+q+'）。<b style="color:var(--gold)">你的系統沒有 HsiaoChen。</b>Windows：設定 → 時間與語言 → 語音 → 管理語音 → 新增「中文（繁體，台灣）」，裝完重開瀏覽器。';
   }
 }
-if(synth){ pickVoice(); synth.onvoiceschanged=pickVoice; }
+if(synth){
+  pickVoice();
+  synth.onvoiceschanged=pickVoice;
+  /* Chrome 的 getVoices() 首次常回空陣列，補幾次重試 */
+  [120,400,1200,2500].forEach(function(ms){ setTimeout(function(){ if(!chosenVoice) pickVoice() },ms) });
+}
 
 function splitSentences(t){
   var out=[],buf='';
@@ -905,6 +926,7 @@ function speak(text,onDone,lineId){
 }
 function speakSystem(text,onDone){
   if(!synth){ if(onDone)onDone(); return }
+  if(!chosenVoice) pickVoice();
   var parts=splitSentences(text), i=0;
   function next(){
     if(i>=parts.length){ stopMouth(); if(onDone)onDone(); return }
