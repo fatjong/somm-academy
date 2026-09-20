@@ -224,6 +224,9 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
 .t-file:hover{border-color:var(--wine);color:var(--wine)}
 .t-file input{display:none}
 .t-note{font-size:11.5px;color:var(--ink-faint);flex:1;min-width:220px;line-height:1.6}
+.t-warn{font-size:12px;line-height:1.8;color:var(--ink-soft);background:var(--gold-tint);border-left:2px solid var(--gold);border-radius:3px;padding:10px 13px;margin-bottom:11px}
+.t-warn b{font-weight:500;color:var(--gold)}
+.t-warn code{background:var(--surface);padding:1px 5px;border-radius:2px;font-size:11.5px}
 .doc{background:var(--surface);border:1px solid var(--rule);border-radius:3px;padding:13px 16px;margin-bottom:10px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 .doc.off{opacity:.5}
 .doc .dn{font-size:13.5px;font-weight:500;flex:1;min-width:180px;line-height:1.5}
@@ -363,6 +366,7 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
     <div class="t-tabs">
       <button class="t-tab on" data-t="gaps">待回答問題 <b id="gapcount">0</b></button>
       <button class="t-tab" data-t="docs">教材管理 <b id="doccount">0</b></button>
+      <button class="t-tab" data-t="test">檢索測試</button>
     </div>
     <button class="chip" id="t-back">回學生介面</button>
   </div>
@@ -371,6 +375,23 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
     <section class="t-pane on" id="pane-gaps">
       <p class="t-hint">學生問到教材裡沒有的內容時，系統會記錄在這裡。你可以直接寫答案，或到「教材管理」上傳補充資料。選擇「加入知識庫」後，之後其他學生問類似問題就能得到答案，來源會標示為教師補充。</p>
       <div id="gaplist"></div>
+    </section>
+
+    <section class="t-pane" id="pane-test">
+      <p class="t-hint">用學生會問的真實問題測試檢索效果。分數高於門檻才會回答，低於門檻會拒答並記錄成待回答問題。若常常該答卻拒答，把門檻調低；若常常答出不相干的段落，把門檻調高。調整後會自動記住。</p>
+      <div class="t-up">
+        <div class="t-uprow">
+          <input type="text" id="testq" placeholder="例如：紅酒為什麼要醒酒" style="flex:2">
+          <button class="t-btn" id="testgo">測試</button>
+        </div>
+        <div class="t-uprow">
+          <label style="font-size:12.5px;color:var(--ink-faint)">門檻</label>
+          <input type="range" id="thslider" min="0.10" max="0.80" step="0.01" style="width:180px;accent-color:var(--wine)">
+          <b id="thval" style="font-size:13px;font-weight:500">0.32</b>
+          <span class="t-note">建議範圍 0.25 到 0.45。</span>
+        </div>
+      </div>
+      <div id="testout"></div>
     </section>
 
     <section class="t-pane" id="pane-docs">
@@ -382,12 +403,18 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
           </label>
           <span class="t-note">原型只解析純文字（.txt / .md / .csv）。實際系統會在後端解析 PDF、PPTX、DOCX 並做 OCR。</span>
         </div>
+        <div class="t-warn">這裡上傳的教材<b>只存在這台電腦的瀏覽器</b>，學生看不到，清除瀏覽器資料就會消失。要讓全班都能用，請把 .md 檔放進 GitHub 的 <code>kb/</code> 資料夾，並更新 <code>kb/manifest.json</code>。下方可一鍵匯出 manifest。
+        </div>
         <div class="t-uprow">
           <textarea id="pastebox" placeholder="或直接貼上教材內容。空行分段，每段會成為一個可被引用的片段。"></textarea>
         </div>
         <div class="t-uprow">
           <input type="text" id="pastename" placeholder="教材名稱，例如：布根地分級補充.docx">
           <button class="t-btn" id="pasteadd">加入知識庫</button>
+        </div>
+        <div class="t-uprow">
+          <button class="t-btn alt" id="expmanifest">匯出 kb/manifest.json</button>
+          <span class="t-note">依目前清單產生 manifest，下載後連同 .md 檔一起放進 GitHub 的 kb/ 資料夾。</span>
         </div>
       </div>
       <div id="doclist"></div>
@@ -1160,7 +1187,7 @@ function kbLoad(){
   }catch(e){}
   kbSeed();
 }
-function kbSave(){ try{ localStorage.setItem(KBKEY,JSON.stringify(KB)) }catch(e){} }
+function kbSave(){ kbInvalidate(); try{ localStorage.setItem(KBKEY,JSON.stringify(KB)) }catch(e){} }
 function kbSeed(){
   KB={docs:[],gaps:[]};
   for(var k in DOCS){
@@ -1181,29 +1208,99 @@ function kbChunks(){
   return out;
 }
 
-/* --- 中文檢索：字元 bigram 重疊。實際系統請用 embedding + reranker --- */
+/* --- 中文檢索 --- */
 function norm(s){ return (s||'').toLowerCase().replace(/[^\u4e00-\u9fa5a-z0-9]+/g,'') }
-function grams(s){
-  var t=norm(s), g={};
-  for(var i=0;i<t.length-1;i++) g[t.substr(i,2)]=1;
-  if(t.length===1) g[t]=1;
+/* 疑問詞與語助詞不帶主題資訊，留著會稀釋關鍵詞的比重 */
+var STOP=/請問|為什麼|怎麼樣|怎樣|怎麼|什麼|如何|哪一?[些個種]|可不可以|可以|是不是|要不要|應該|我想|我要|告訴我|幫我|一下|以及|還有|嗎|呢|吧|喔|啊|呀|的|了|嘛/g;
+function normQ(s){ return norm(String(s||'').replace(STOP,'')) }
+/* ==================================================================
+   檢索索引：bigram + IDF 加權
+   教材量大時，用詞頻加權比單純算重疊比例準確得多。
+   「的」「酒」這類到處都有的字幾乎不加分，
+   「布根地」「殘糖」這類只出現在少數段落的字權重高。
+   ================================================================== */
+var IDX={built:false,chunks:[],idf:{},norm:[]};
+
+function gramList(s){
+  var t=norm(s), g=[];
+  for(var i=0;i<t.length-1;i++) g.push(t.substr(i,2));
+  if(t.length===1) g.push(t);
   return g;
 }
-function retrieve(q){
-  var qg=grams(q), qk=Object.keys(qg);
-  if(!qk.length) return [];
-  return kbChunks().map(function(c){
-    var cg=grams(c.text), hit=0;
-    for(var i=0;i<qk.length;i++) if(cg[qk[i]]) hit++;
-    var s=hit/qk.length;
-    if(norm(c.text).indexOf(norm(q))>=0) s=Math.max(s,0.9);   /* 整句命中 */
-    if(c.teacher) s*=1.06;                                     /* 教師補充略微優先 */
-    return {c:c,score:s};
-  }).filter(function(r){return r.score>0})
-    .sort(function(a,b){return b.score-a.score})
-    .slice(0,4);
+function buildIndex(){
+  var cs=kbChunks();
+  IDX.chunks=cs;
+  IDX.idf={}; IDX.norm=[];
+  var df={}, sets=[];
+  cs.forEach(function(c){
+    var seen={}, gl=gramList(c.text);
+    for(var i=0;i<gl.length;i++) seen[gl[i]]=(seen[gl[i]]||0)+1;
+    sets.push(seen);
+    for(var g in seen) df[g]=(df[g]||0)+1;
+  });
+  var N=cs.length||1;
+  for(var g in df) IDX.idf[g]=Math.log(1+N/df[g]);
+  IDX.sets=sets;
+  /* 每個片段的向量長度，用來做長度正規化，避免長段落靠字多取勝 */
+  sets.forEach(function(seen){
+    var sum=0;
+    for(var g in seen){ var w=(IDX.idf[g]||0)*(1+Math.log(seen[g])); sum+=w*w }
+    IDX.norm.push(Math.sqrt(sum)||1);
+  });
+  IDX.built=true;
 }
-var THRESHOLD=0.34;
+function retrieve(q){
+  if(!IDX.built) buildIndex();
+  if(!IDX.chunks.length) return [];
+  var ql=gramList(normQ(q));
+  if(ql.length<1) ql=gramList(q);
+  if(!ql.length) return [];
+  var qs={}, i;
+  for(i=0;i<ql.length;i++) qs[ql[i]]=(qs[ql[i]]||0)+1;
+  var qnorm=0, qw={}, qtotal=0;
+  for(var g in qs){
+    var w=(IDX.idf[g]!==undefined?IDX.idf[g]:Math.log(1+IDX.chunks.length))*(1+Math.log(qs[g]));
+    qw[g]=w; qnorm+=w*w; qtotal+=w;
+  }
+  qnorm=Math.sqrt(qnorm)||1; qtotal=qtotal||1;
+  var qmax=0; for(var g2 in qw) if(qw[g2]>qmax) qmax=qw[g2];
+  var nq=norm(q);
+  var out=[];
+  for(i=0;i<IDX.chunks.length;i++){
+    var seen=IDX.sets[i], dot=0, covered=0, peak=0;
+    for(var gg in qw){
+      var cnt=seen[gg];
+      if(cnt){ dot+=qw[gg]*(IDX.idf[gg]||0)*(1+Math.log(cnt)); covered+=qw[gg]; if(qw[gg]>peak) peak=qw[gg]; }
+    }
+    if(!dot) continue;
+    /* 涵蓋率：問題裡的關鍵詞有多少比例出現在這個片段。
+       短問題對長段落時餘弦值天然偏低，用涵蓋率當主分數比較穩定，
+       再摻一點餘弦值來決定同分片段的先後。 */
+    var coverage=covered/qtotal;
+    var cosine=dot/(qnorm*IDX.norm[i]);
+    /* peak：問題裡最關鍵的那個詞有沒有命中。
+       即使其他字沒對上，只要專有名詞命中，通常就是對的段落。 */
+    var pk=peak/(qmax||1);
+    var score=coverage*0.50+pk*0.30+Math.min(1,cosine*3)*0.20;
+    var c=IDX.chunks[i];
+    /* 整句出現在片段裡，直接視為高度相關 */
+    if(nq.length>3&&norm(c.text).indexOf(nq)>=0) score=Math.max(score,0.92);
+    if(c.teacher) score*=1.08;
+    out.push({c:c,score:score});
+  }
+  out.sort(function(a,b){return b.score-a.score});
+  /* 同一份教材最多取兩段，避免整頁答案都來自同一個檔 */
+  var seenDoc={}, picked=[];
+  for(i=0;i<out.length&&picked.length<5;i++){
+    var d=out[i].c.docId;
+    seenDoc[d]=(seenDoc[d]||0)+1;
+    if(seenDoc[d]<=2) picked.push(out[i]);
+  }
+  return picked;
+}
+function kbInvalidate(){ IDX.built=false }
+var THRESHOLD=0.32;
+try{ var _t=parseFloat(localStorage.getItem('sommThreshold')); if(!isNaN(_t)) THRESHOLD=_t }catch(e){}
 
 /* --- 學生端：自由提問走真實檢索 --- */
 function liveAsk(){
@@ -1381,6 +1478,56 @@ document.getElementById('pasteadd').onclick=function(){
   addDoc(n,t,true);
   document.getElementById('pastebox').value=''; document.getElementById('pastename').value='';
 };
+(function(){
+  var sl=document.getElementById('thslider'), tv=document.getElementById('thval');
+  sl.value=THRESHOLD; tv.textContent=THRESHOLD.toFixed(2);
+  sl.oninput=function(){
+    THRESHOLD=parseFloat(this.value); tv.textContent=THRESHOLD.toFixed(2);
+    try{ localStorage.setItem('sommThreshold',String(THRESHOLD)) }catch(e){}
+    if(document.getElementById('testq').value.trim()) runTest();
+  };
+  function runTest(){
+    var q=document.getElementById('testq').value.trim();
+    var box=document.getElementById('testout');
+    if(!q){ box.innerHTML=''; return }
+    var hits=retrieve(q);
+    if(!hits.length){
+      box.innerHTML='<p class="t-empty">沒有任何片段命中。<br>學生問這一題會得到拒答，並記錄成待回答問題。</p>';
+      return;
+    }
+    var h='<p class="t-hint" style="margin-bottom:12px">找到 '+hits.length+' 個片段，'+
+      hits.filter(function(x){return x.score>=THRESHOLD}).length+' 個高於門檻 '+THRESHOLD.toFixed(2)+'</p>';
+    hits.forEach(function(x,i){
+      var pass=x.score>=THRESHOLD;
+      var col=pass?'var(--wine)':'var(--ink-faint)';
+      h+='<div class="doc" style="display:block;border-left:2px solid '+col+'">'+
+         '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">'+
+         '<b style="font-weight:500;color:'+col+';font-size:15px">'+x.score.toFixed(3)+'</b>'+
+         '<span style="font-size:11.5px;color:'+col+'">'+(pass?'會採用':'低於門檻')+'</span>'+
+         '<span class="dn" style="flex:1">《'+esc(x.c.docName)+'》<span class="dm">'+esc(x.c.loc||'')+'</span></span></div>'+
+         '<div style="font-size:12.5px;line-height:1.8;color:var(--ink-soft);margin-top:7px">'+
+         esc(x.c.text.slice(0,170))+(x.c.text.length>170?'…':'')+'</div></div>';
+    });
+    box.innerHTML=h;
+  }
+  document.getElementById('testgo').onclick=runTest;
+  document.getElementById('testq').onkeydown=function(e){ if(e.key==='Enter') runTest() };
+})();
+document.getElementById('expmanifest').onclick=function(){
+  /* 只列非示範、非教師手寫的教材，也就是真的有對應 .md 檔的那些 */
+  var files=KB.docs.filter(function(d){ return !d.seed && !d.teacher }).map(function(d){
+    var fn=d.name;
+    if(!/\.(md|txt|csv|json)$/i.test(fn)) fn=fn+'.md';
+    return {file:fn, name:d.name.replace(/\.(md|txt|csv|json)$/i,'')};
+  });
+  if(!files.length){ toast('目前沒有可匯出的教材檔'); return }
+  var blob=new Blob([JSON.stringify({files:files},null,1)],{type:'application/json'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='manifest.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(a.href) },1000);
+  toast('已匯出 '+files.length+' 筆。請把這份 manifest.json 與對應的 .md 檔一起放進 kb/');
+};
 document.querySelectorAll('.t-tab').forEach(function(b){
   b.onclick=function(){
     document.querySelectorAll('.t-tab').forEach(function(x){x.classList.remove('on')});
@@ -1428,34 +1575,82 @@ function mdChunks(text){
 var KBLOAD={state:'idle',msg:'尚未載入',detail:[]};
 function kbStatus(state,msg){ KBLOAD.state=state; KBLOAD.msg=msg; if(teacherEl&&teacherEl.classList.contains('on')) paintDocs(); }
 
+/* ---- 找不到 manifest.json 時，直接問 GitHub 這個資料夾有哪些檔 ----
+   從網址推導 owner / repo / 子路徑，公開 repo 可直接查詢，不需金鑰。 */
+function ghDiscover(cb){
+  var host=location.hostname;
+  if(!/\.github\.io$/i.test(host)){ cb(null,'非 github.io 網域，無法自動偵測'); return }
+  var owner=host.replace(/\.github\.io$/i,'');
+  var parts=location.pathname.split('/').filter(Boolean);
+  var repo, sub;
+  if(!parts.length){ repo=host; sub=''; }
+  else if(parts.length===1&&/\.html?$/i.test(parts[0])){ repo=host; sub=''; }
+  else { repo=parts[0]; sub=parts.slice(1).filter(function(p){return !/\.html?$/i.test(p)}).join('/'); }
+  var apiPath=(sub?sub+'/':'')+'kb';
+  var url='https://api.github.com/repos/'+owner+'/'+repo+'/contents/'+apiPath.split('/').map(encodeURIComponent).join('/');
+  var x=new XMLHttpRequest();
+  x.open('GET',url,true);
+  x.onreadystatechange=function(){
+    if(x.readyState!==4) return;
+    if(x.status!==200){ cb(null,'GitHub 目錄查詢失敗（HTTP '+x.status+'）'+(x.status===403?'，可能是查詢次數達上限，稍後再試':'')); return }
+    var arr=null;
+    try{ arr=JSON.parse(x.responseText) }catch(e){}
+    if(!arr||!arr.length){ cb(null,'GitHub 回傳空目錄'); return }
+    var files=arr.filter(function(it){
+      return it.type==='file' && /\.(md|txt|csv)$/i.test(it.name) && !/^readme\.md$/i.test(it.name);
+    }).map(function(it){
+      return { file:it.name, name:it.name.replace(/\.(md|txt|csv)$/i,'') };
+    });
+    cb(files,files.length?('自動偵測到 '+files.length+' 個檔案'):'目錄裡沒有 .md 檔');
+  };
+  x.onerror=function(){ cb(null,'GitHub 目錄查詢連線失敗') };
+  x.send();
+}
+
 function kbLoadMarkdown(done){
   KBLOAD={state:'loading',msg:'正在讀取 kb/manifest.json…',detail:[]};
   var x=new XMLHttpRequest();
   x.open('GET','kb/manifest.json',true);
   x.onreadystatechange=function(){
     if(x.readyState!==4) return;
-    if(x.status!==200&&!(x.status===0&&x.responseText)){
-      kbStatus('err','讀不到 kb/manifest.json（HTTP '+x.status+'）。請確認 kb 資料夾與 index.html 在同一層。');
-      if(done)done(0); return;
+    var list=null, why='';
+    if(x.status===200||(x.status===0&&x.responseText)){
+      try{ list=(JSON.parse(x.responseText)||{}).files }catch(e){ why='manifest.json 格式錯誤：'+e.message }
+      if(list&&!list.length){ list=null; why='manifest.json 裡的 files 是空的' }
+    }else{
+      why='找不到 kb/manifest.json（HTTP '+x.status+'）';
     }
-    var parsed=null, perr=null;
-    try{ parsed=JSON.parse(x.responseText) }catch(e){ perr=e.message }
-    if(perr){
-      kbStatus('err','kb/manifest.json 格式錯誤：'+perr+'　常見原因是多了逗號或用了全形括號。');
-      if(done)done(0); return;
+    if(!list){
+      /* 沒有清單檔就直接問 GitHub 這個資料夾有哪些檔案 */
+      kbStatus('loading',why+'，改用自動偵測…');
+      ghDiscover(function(files,msg){
+        if(!files||!files.length){
+          kbStatus('err',why+'。自動偵測也失敗：'+msg+'。請在 kb/ 放一份 manifest.json，或用教材管理頁的匯出功能產生。');
+          if(done)done(0); return;
+        }
+        KBLOAD.detail=['自動偵測：'+msg];
+        fetchAll(files,done);
+      });
+      return;
     }
-    var list=(parsed||{}).files;
-    if(!list||!list.length){
-      kbStatus('err','kb/manifest.json 讀到了，但裡面沒有 files 陣列，或陣列是空的。');
-      if(done)done(0); return;
-    }
+    fetchAll(list,done);
+  };
+  x.onerror=function(){
+    kbStatus('err','讀取 kb/manifest.json 時發生網路錯誤。若你是用 file:// 直接開啟本機檔案，瀏覽器會擋住，請改用網址開啟。');
+    if(done)done(0);
+  };
+  x.send();
+}
+
+function fetchAll(list,done){
+  {
     var pending=list.length, added=0, chunks=0;
     KBLOAD.state='loading'; KBLOAD.msg='找到 '+list.length+' 份教材，讀取中…'; KBLOAD.detail=[];
     /* 先移除上一次自動載入的，避免重複 */
     KB.docs=KB.docs.filter(function(d){ return !d.md });
     list.forEach(function(item){
       var y=new XMLHttpRequest();
-      y.open('GET','kb/'+item.file,true);
+      y.open('GET','kb/'+encodeURIComponent(item.file),true);
       y.onreadystatechange=function(){
         if(y.readyState!==4) return;
         if(y.status===200||(y.status===0&&y.responseText)){
@@ -1484,12 +1679,7 @@ function kbLoadMarkdown(done){
       };
       y.send();
     });
-  };
-  x.onerror=function(){
-    kbStatus('err','讀取 kb/manifest.json 時發生網路錯誤。若你是用 file:// 直接開啟本機檔案，瀏覽器會擋住，請改用網址開啟。');
-    if(done)done(0);
-  };
-  x.send();
+  }
 }
 
 /* 接線：自由提問改走真實檢索；登入頁加教師入口 */
