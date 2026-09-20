@@ -730,15 +730,19 @@ var ttsOn=true, rate=VDEF.rate, pitch=VDEF.pitch, chosenVoice=null, zhVoices=[];
 var synth=window.speechSynthesis;
 
 /* 預錄語音包：voice/<id>.mp3，沿用 somm-academy 的慣例。找不到就退回系統語音。 */
-var PACK={base:'voice/',ext:'mp3',ready:false,ids:null,audio:null,ac:null,an:null,src:null};
+var PACK={base:'voice/',ext:'ogg',ready:false,ids:null,audio:null,ac:null,an:null,src:null};
+/* 依序試：自己目錄的 voice/、上一層的 ../voice/。副檔名先試 ogg 再試 mp3。 */
+var PACK_BASES=['voice/','../voice/'];
 function probePack(){
-  var exts=['mp3','ogg'],i=0;
-  (function nextExt(){
-    if(i>=exts.length){ PACK.ready=false; reportVoice(); return }
-    var e=exts[i++], a=new Audio(PACK.base+'sys_intro.'+e);
+  var combos=[];
+  PACK_BASES.forEach(function(b){ ['ogg','mp3'].forEach(function(e){ combos.push([b,e]) }) });
+  var i=0;
+  (function nextCombo(){
+    if(i>=combos.length){ PACK.ready=false; reportVoice(); return }
+    var c=combos[i++], a=new Audio(c[0]+'sys_intro.'+c[1]);
     a.preload='metadata';
-    a.onloadedmetadata=function(){ PACK.ext=e; PACK.ready=true; loadManifest(); reportVoice(); };
-    a.onerror=nextExt;
+    a.onloadedmetadata=function(){ PACK.base=c[0]; PACK.ext=c[1]; PACK.ready=true; loadManifest(); reportVoice(); };
+    a.onerror=nextCombo;
     a.load();
   })();
 }
@@ -868,18 +872,50 @@ function pickVoice(){
   }
   reportVoice();
 }
+var VDEBUG=/[?&]voice\b/.test(location.search);
+/* ?voice 時才建立語音控制列：平常學生看不到，排查時可手動換聲音 */
+function buildVoicePanel(){
+  if(!VDEBUG||document.getElementById('vpanel')) return;
+  var host=document.querySelector('.chat');
+  if(!host) return;
+  var d=document.createElement('div');
+  d.id='vpanel';
+  d.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 24px;background:var(--surface);border-bottom:1px solid var(--rule);font-size:12px;color:var(--ink-faint)';
+  d.innerHTML='<b style="font-weight:500;color:var(--gold)">語音排查</b>'+
+    '<select id="voicesel" style="max-width:300px;font-size:12px;padding:3px 6px;border:1px solid var(--rule);border-radius:3px;background:var(--surface-2);color:var(--ink)"></select>'+
+    '<button id="testbtn2" style="border:1px solid var(--rule);background:var(--surface-2);border-radius:3px;padding:3px 11px;font-size:12px;color:var(--ink-soft)">試聽</button>'+
+    '<button id="mutebtn" style="border:1px solid var(--rule);background:var(--surface-2);border-radius:3px;padding:3px 11px;font-size:12px;color:var(--ink-soft)">靜音</button>'+
+    '<span>語速 <input type="range" id="rate" min="0.7" max="1.5" step="0.01" style="width:70px;accent-color:var(--wine);vertical-align:middle"><b id="ratev"></b></span>'+
+    '<span>音調 <input type="range" id="pitch" min="0.8" max="1.9" step="0.01" style="width:70px;accent-color:var(--wine);vertical-align:middle"><b id="pitchv"></b></span>';
+  var stage=host.querySelector('.stage');
+  if(stage&&stage.nextSibling) host.insertBefore(d,stage.nextSibling); else host.insertBefore(d,host.firstChild);
+  var r=document.getElementById('rate'), pp=document.getElementById('pitch');
+  r.value=rate; document.getElementById('ratev').textContent=' '+rate.toFixed(2);
+  pp.value=pitch; document.getElementById('pitchv').textContent=' '+pitch.toFixed(2);
+  r.oninput=function(){ rate=parseFloat(this.value); document.getElementById('ratev').textContent=' '+rate.toFixed(2) };
+  pp.oninput=function(){ pitch=parseFloat(this.value); document.getElementById('pitchv').textContent=' '+pitch.toFixed(2) };
+  document.getElementById('voicesel').onchange=function(){
+    var i=parseInt(this.value,10);
+    if(!isNaN(i)&&zhVoices[i]){ chosenVoice=zhVoices[i]; reportVoice(); testVoice() }
+  };
+  document.getElementById('testbtn2').onclick=function(){ testVoice() };
+  document.getElementById('mutebtn').onclick=function(){
+    ttsOn=!ttsOn; this.textContent=ttsOn?'靜音':'開啟語音'; if(!ttsOn) stopSpeak();
+  };
+  pickVoice();
+}
 function reportVoice(){
-  /* 網址加上 ?voice 會在畫面下方顯示實際選用的語音，用來排查發音不對的問題 */
-  if(/[?&]voice\b/.test(location.search)){
+  if(VDEBUG){
     var dbg=document.getElementById('voicedbg');
     if(!dbg){
       dbg=document.createElement('div'); dbg.id='voicedbg';
       dbg.style.cssText='position:fixed;left:8px;bottom:8px;z-index:90;background:var(--ink);color:var(--paper);font-size:11px;padding:6px 11px;border-radius:4px;max-width:86vw;line-height:1.5';
       document.body.appendChild(dbg);
     }
-    dbg.textContent = chosenVoice
+    var packInfo = PACK.ready ? ('　預錄包：'+PACK.base+'（'+PACK.ext+'）'+(PACK.ids?('，'+Object.keys(PACK.ids).length+' 段'):'')) : '　預錄包：未找到';
+    dbg.textContent = (chosenVoice
       ? ('語音：'+chosenVoice.name+'｜'+chosenVoice.lang+'｜'+(chosenVoice.localService===false?'雲端':'本機')+'　候選 '+zhVoices.length+' 個')
-      : ('尚未選到中文語音，候選 '+zhVoices.length+' 個');
+      : ('尚未選到中文語音，候選 '+zhVoices.length+' 個')) + packInfo;
   }
   var el=document.getElementById('vinfo');
   if(!el) return;
@@ -1102,7 +1138,7 @@ document.getElementById('signin').onclick=function(){
     t.children[0].onclick=function(){showTab('chat')};
     t.children[1].onclick=function(){showTab('src')};
   }
-  buildChips(); welcome(true);
+  buildVoicePanel(); buildChips(); welcome(true);
 };
 document.getElementById('backbtn').onclick=function(){stopSpeak();app.classList.remove('on');login.style.display='flex'};
 document.getElementById('pw').onkeydown=function(e){if(e.key==='Enter')document.getElementById('signin').click()};
@@ -1283,18 +1319,28 @@ function answerGap(id,toKB){
 }
 function paintDocs(){
   var box=document.getElementById('doclist');
-  if(!KB.docs.length){ box.innerHTML='<p class="t-empty">知識庫是空的。</p>'; return }
-  var h='';
+  var color={ok:'var(--wine)',err:'#B3403F',loading:'var(--gold)',idle:'var(--ink-faint)'}[KBLOAD.state];
+  var st='<div style="border:1px solid var(--rule);border-left:2px solid '+color+';background:var(--surface);border-radius:3px;padding:11px 14px;margin-bottom:14px;font-size:12.5px;line-height:1.75">'+
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
+    '<b style="font-weight:500;color:'+color+'">kb/ 自動載入</b>'+
+    '<span style="flex:1;min-width:180px;color:var(--ink-soft)">'+esc(KBLOAD.msg)+'</span>'+
+    '<button class="t-btn alt" id="kbreload">重新載入</button></div>'+
+    (KBLOAD.detail.length?'<div style="margin-top:8px;color:var(--ink-faint);font-size:12px">'+KBLOAD.detail.map(esc).join('<br>')+'</div>':'')+
+    '</div>';
+  if(!KB.docs.length){ box.innerHTML=st+'<p class="t-empty">知識庫是空的。</p>'; wireReload(); return }
+  var h=st;
   KB.docs.slice().reverse().forEach(function(d){
     var n=d.chunks.length;
     h+='<div class="doc'+(d.active?'':' off')+'">'+
        '<div class="dn">'+esc(d.name)+'<div class="dm">'+n+' 個片段　'+fmtTime(d.at)+
-       (d.seed?'　<span class="seed">示範教材</span>':'')+(d.teacher?'　<span class="seed">教師補充</span>':'')+'</div></div>'+
+       (d.seed?'　<span class="seed">示範教材</span>':'')+(d.teacher?'　<span class="seed">教師補充</span>':'')+
+       (d.md?'　<span class="seed">來自 kb/</span>':'')+'</div></div>'+
        '<div class="doc-act">'+
        '<button class="t-btn alt" data-tog="'+d.id+'">'+(d.active?'停用':'啟用')+'</button>'+
        '<button class="t-btn warn" data-rm="'+d.id+'">刪除</button></div></div>';
   });
   box.innerHTML=h;
+  wireReload();
   box.querySelectorAll('[data-tog]').forEach(function(b){ b.onclick=function(){
     KB.docs.forEach(function(d){ if(d.id===b.dataset.tog) d.active=!d.active });
     kbSave(); paintDocs(); toast('停用的教材會立刻從檢索中排除');
@@ -1302,6 +1348,10 @@ function paintDocs(){
   box.querySelectorAll('[data-rm]').forEach(function(b){ b.onclick=function(){
     KB.docs=KB.docs.filter(function(d){return d.id!==b.dataset.rm}); kbSave(); paintDocs(); paintBadges();
   }});
+}
+function wireReload(){
+  var b=document.getElementById('kbreload');
+  if(b) b.onclick=function(){ kbLoadMarkdown(function(){ paintDocs(); paintBadges() }); paintDocs() };
 }
 function addDoc(name,text,teacher){
   var parts=text.split(/\n\s*\n/).map(function(s){return s.trim()}).filter(function(s){return s.length>8});
@@ -1374,15 +1424,33 @@ function mdChunks(text){
   flush();
   return out;
 }
+/* 載入狀態，會顯示在教師模式的教材管理頁，方便排查 */
+var KBLOAD={state:'idle',msg:'尚未載入',detail:[]};
+function kbStatus(state,msg){ KBLOAD.state=state; KBLOAD.msg=msg; if(teacherEl&&teacherEl.classList.contains('on')) paintDocs(); }
+
 function kbLoadMarkdown(done){
+  KBLOAD={state:'loading',msg:'正在讀取 kb/manifest.json…',detail:[]};
   var x=new XMLHttpRequest();
   x.open('GET','kb/manifest.json',true);
   x.onreadystatechange=function(){
     if(x.readyState!==4) return;
-    var list=null;
-    try{ list=(JSON.parse(x.responseText)||{}).files }catch(e){}
-    if(!list||!list.length){ if(done)done(0); return }
-    var pending=list.length, added=0;
+    if(x.status!==200&&!(x.status===0&&x.responseText)){
+      kbStatus('err','讀不到 kb/manifest.json（HTTP '+x.status+'）。請確認 kb 資料夾與 index.html 在同一層。');
+      if(done)done(0); return;
+    }
+    var parsed=null, perr=null;
+    try{ parsed=JSON.parse(x.responseText) }catch(e){ perr=e.message }
+    if(perr){
+      kbStatus('err','kb/manifest.json 格式錯誤：'+perr+'　常見原因是多了逗號或用了全形括號。');
+      if(done)done(0); return;
+    }
+    var list=(parsed||{}).files;
+    if(!list||!list.length){
+      kbStatus('err','kb/manifest.json 讀到了，但裡面沒有 files 陣列，或陣列是空的。');
+      if(done)done(0); return;
+    }
+    var pending=list.length, added=0, chunks=0;
+    KBLOAD.state='loading'; KBLOAD.msg='找到 '+list.length+' 份教材，讀取中…'; KBLOAD.detail=[];
     /* 先移除上一次自動載入的，避免重複 */
     KB.docs=KB.docs.filter(function(d){ return !d.md });
     list.forEach(function(item){
@@ -1394,15 +1462,33 @@ function kbLoadMarkdown(done){
           var ch=mdChunks(y.responseText||'');
           if(ch.length){
             KB.docs.push({id:'md-'+item.file,name:item.name||item.file,md:true,active:true,at:Date.now(),chunks:ch});
-            added++;
+            added++; chunks+=ch.length;
+            KBLOAD.detail.push('✓ '+item.file+'　'+ch.length+' 個片段');
+          }else{
+            KBLOAD.detail.push('✗ '+item.file+'　讀到了但切不出片段，檔案可能是空的或段落太短');
           }
+        }else{
+          KBLOAD.detail.push('✗ '+item.file+'　HTTP '+y.status+'，檔名或大小寫可能不符');
         }
-        if(--pending===0){ kbSave(); if(typeof paintDocs==='function'&&teacherEl.classList.contains('on')){paintDocs();paintBadges()} if(done)done(added) }
+        if(--pending===0){
+          kbSave();
+          if(added) kbStatus('ok','已自動載入 '+added+' 份教材，共 '+chunks+' 個片段。');
+          else kbStatus('err','manifest 讀到了，但所有檔案都載入失敗。');
+          if(typeof paintBadges==='function') paintBadges();
+          if(done)done(added);
+        }
+      };
+      y.onerror=function(){
+        KBLOAD.detail.push('✗ '+item.file+'　網路錯誤');
+        if(--pending===0){ kbSave(); kbStatus('err','部分檔案載入失敗。'); if(done)done(added) }
       };
       y.send();
     });
   };
-  x.onerror=function(){ if(done)done(0) };
+  x.onerror=function(){
+    kbStatus('err','讀取 kb/manifest.json 時發生網路錯誤。若你是用 file:// 直接開啟本機檔案，瀏覽器會擋住，請改用網址開啟。');
+    if(done)done(0);
+  };
   x.send();
 }
 
