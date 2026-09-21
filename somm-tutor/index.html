@@ -453,6 +453,10 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
           <button class="t-btn" id="pasteadd">加入知識庫</button>
         </div>
         <div class="t-uprow">
+          <button class="t-btn alt" id="clearlocal">清除本機上傳的教材</button>
+          <span class="t-note">教材放進 GitHub 的 kb/ 之後，請清掉這台電腦先前上傳的副本，避免同一份教材重複出現。教師補充的答案會保留。</span>
+        </div>
+        <div class="t-uprow">
           <button class="t-btn alt" id="expmanifest">匯出 kb/manifest.json</button>
           <span class="t-note">依目前清單產生 manifest，下載後連同 .md 檔一起放進 GitHub 的 kb/ 資料夾。</span>
         </div>
@@ -1372,20 +1376,22 @@ var KBKEY='sommKB_v1';
 function kbLoad(){
   try{
     var raw=localStorage.getItem(KBKEY);
-    if(raw){ KB=JSON.parse(raw); return }
+    if(raw){
+      KB=JSON.parse(raw);
+      /* 早期版本會塞入虛構的示範教材，這裡一律移除，避免被當成出處引用 */
+      var before=KB.docs.length;
+      KB.docs=(KB.docs||[]).filter(function(d){ return !d.seed });
+      KB.gaps=KB.gaps||[];
+      if(KB.docs.length!==before) kbSave();
+      return;
+    }
   }catch(e){}
   kbSeed();
 }
 function kbSave(){ kbInvalidate(); try{ localStorage.setItem(KBKEY,JSON.stringify(KB)) }catch(e){} }
 function kbSeed(){
+  /* 知識庫只來自 kb/ 資料夾與教師補充，不放任何示範內容 */
   KB={docs:[],gaps:[]};
-  for(var k in DOCS){
-    var d=DOCS[k];
-    KB.docs.push({
-      id:'seed-'+k, name:d.t, loc:d.loc, seed:true, active:true,
-      at:Date.now(), chunks:[{id:k, text:d.ex.replace(/<\/?mark>/g,''), loc:d.loc}]
-    });
-  }
   kbSave();
 }
 function kbChunks(){
@@ -1400,7 +1406,7 @@ function kbChunks(){
 /* --- 中文檢索 --- */
 function norm(s){ return (s||'').toLowerCase().replace(/[^\u4e00-\u9fa5a-z0-9]+/g,'') }
 /* 疑問詞與語助詞不帶主題資訊，留著會稀釋關鍵詞的比重 */
-var STOP=/請問|為什麼|怎麼樣|怎樣|怎麼|什麼|如何|哪一?[些個種]|可不可以|可以|是不是|要不要|應該|我想|我要|告訴我|幫我|一下|以及|還有|嗎|呢|吧|喔|啊|呀|的|了|嘛/g;
+var STOP=/請問|是什麼|是甚麼|是啥|是指什麼|有哪些|有什麼|有沒有|為什麼|為何|怎麼樣|怎樣|怎麼|什麼|甚麼|如何|哪一?[些個種]|可不可以|可以|是不是|要不要|應該|我想|我要|告訴我|幫我|一下|以及|還有|嗎|呢|吧|喔|啊|呀|的|了|嘛/g;
 function normQ(s){ return norm(String(s||'').replace(STOP,'')) }
 /* ==================================================================
    檢索索引：bigram + IDF 加權
@@ -1411,69 +1417,164 @@ function normQ(s){ return norm(String(s||'').replace(STOP,'')) }
 var IDX={built:false,chunks:[],idf:{},norm:[]};
 
 function gramList(s){
-  var t=norm(s), g=[];
-  for(var i=0;i<t.length-1;i++) g.push(t.substr(i,2));
-  if(t.length===1) g.push(t);
+  /* 中文取相鄰兩字；英文以整個單字為單位，避免 cabernet 被切成 ca、ab、be 到處誤中 */
+  var g=[], runs=String(s||'').toLowerCase().match(/[\u4e00-\u9fa5]+|[a-z0-9]+/g)||[];
+  runs.forEach(function(r){
+    if(/^[a-z0-9]/.test(r)){ if(r.length>=2) g.push(r); return }
+    if(r.length===1) return;
+    for(var i=0;i<r.length-1;i++) g.push(r.substr(i,2));
+  });
   return g;
 }
 function buildIndex(){
   var cs=kbChunks();
   IDX.chunks=cs;
-  IDX.idf={}; IDX.norm=[];
+  IDX.idf={}; IDX.meta=[];
   var df={}, sets=[];
   cs.forEach(function(c){
     var seen={}, gl=gramList(c.text);
     for(var i=0;i<gl.length;i++) seen[gl[i]]=(seen[gl[i]]||0)+1;
     sets.push(seen);
     for(var g in seen) df[g]=(df[g]||0)+1;
+    /* 片段特徵：有效長度、是否為單字清單（品酒輪、表格標題這類） */
+    var nt=norm(c.text);
+    var lines=String(c.text).split('\n').map(function(l){return l.trim()}).filter(Boolean);
+    var avg=lines.length?lines.reduce(function(a,l){return a+norm(l).length},0)/lines.length:0;
+    var punct=(String(c.text).match(/[。，；！？、]/g)||[]).length;
+    IDX.meta.push({len:nt.length,low:String(c.text).toLowerCase(),head:norm(c.loc||''),
+                   listy:(lines.length>=4&&avg<7&&punct<2)});
   });
   var N=cs.length||1;
   for(var g in df) IDX.idf[g]=Math.log(1+N/df[g]);
   IDX.sets=sets;
-  /* 每個片段的向量長度，用來做長度正規化，避免長段落靠字多取勝 */
-  sets.forEach(function(seen){
-    var sum=0;
-    for(var g in seen){ var w=(IDX.idf[g]||0)*(1+Math.log(seen[g])); sum+=w*w }
-    IDX.norm.push(Math.sqrt(sum)||1);
-  });
   IDX.built=true;
 }
+/* ---- 葡萄酒用語同義詞 ----
+   教材與學生的用字常常不同（開瓶／開酒、醒酒／換瓶）。字面比對跨不過去，
+   這裡列出常見的對應。同一組裡的詞互相視為同義，找不到原詞時用同義詞代替。
+   要新增就照格式加一行。 */
+var SYNONYMS=[
+  ['開瓶','開酒','開啟酒瓶'],
+  ['醒酒','換瓶','過瓶'],
+  ['醒酒器','醒酒瓶'],
+  ['軟木塞','瓶塞','木塞'],
+  ['單寧','丹寧','澀感'],
+  ['香檳','氣泡酒'],
+  ['侍酒溫度','適飲溫度','飲用溫度'],
+  ['餐酒搭配','配餐','搭餐'],
+  ['侍酒師','sommelier'],
+  ['卡本內蘇維濃','卡本內','cabernet sauvignon'],
+  ['黑皮諾','pinot noir'],
+  ['夏多內','chardonnay'],
+  ['麗絲玲','riesling'],
+  ['梅洛','merlot'],
+  ['希哈','syrah','shiraz'],
+  ['白蘇維濃','sauvignon blanc'],
+  ['內比歐露','nebbiolo'],
+  ['格烏茲塔明那','gewurztraminer'],
+  ['酒標','標籤']
+];
+function synTerms(qraw){
+  var low=String(qraw||'').toLowerCase(), out=[];
+  SYNONYMS.forEach(function(group){
+    group.forEach(function(w){
+      if(low.indexOf(w.toLowerCase())<0) return;
+      var grams=gramList(w);
+      if(!grams.length) return;
+      var alts=group.filter(function(x){return x!==w}).map(function(x){return gramList(x)}).filter(function(a){return a.length});
+      if(alts.length) out.push({grams:grams,alts:alts});
+    });
+  });
+  return out;
+}
+
+var UNSEEN_K=0.9;
+var CONNECT=/[配和與跟及或在的搭用對]/;
+function reEscQ(s){return String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}
 function retrieve(q){
   if(!IDX.built) buildIndex();
   if(!IDX.chunks.length) return [];
-  var ql=gramList(normQ(q));
+  /* 先拿掉疑問詞，但保留空格，英文單字才不會黏成一串 */
+  var qraw=String(q||'').replace(STOP,' ');
+  /* 逐段取詞；未出現在教材的兩字組合若緊鄰已知詞，
+     多半是「海鮮配」切出「鮮配」這類跨詞邊界的假詞，直接略過 */
+  var ql=[], qruns=qraw.toLowerCase().match(/[\u4e00-\u9fa5]+|[a-z0-9]+/g)||[];
+  qruns.forEach(function(r){
+    if(/^[a-z0-9]/.test(r)){ if(r.length>=2) ql.push(r); return }
+    if(r.length<2) return;
+    var seq=[]; for(var k=0;k<r.length-1;k++) seq.push(r.substr(k,2));
+    seq.forEach(function(g,k){
+      if(IDX.idf[g]===undefined){
+        var pv=k>0&&IDX.idf[seq[k-1]]!==undefined, nx=k<seq.length-1&&IDX.idf[seq[k+1]]!==undefined;
+        var last=k===seq.length-1, first=k===0;
+        /* 兩側都是已知詞，或是已知詞後面接一個連接字（海鮮「配」），才算交界 */
+        if((pv&&nx)||(pv&&last&&CONNECT.test(g.charAt(1)))||(nx&&first&&CONNECT.test(g.charAt(0)))) return;
+      }
+      ql.push(g);
+    });
+  });
   if(ql.length<1) ql=gramList(q);
-  if(!ql.length) return [];
+  /* 單獨一個中文字（如「配」）改用包含比對、低權重，不當成罕見詞 */
+  var singles=(qraw.match(/[\u4e00-\u9fa5]+/g)||[]).filter(function(r){return r.length===1});
+  var syns=synTerms(qraw);
+  if(!ql.length&&!singles.length) return [];
   var qs={}, i;
   for(i=0;i<ql.length;i++) qs[ql[i]]=(qs[ql[i]]||0)+1;
-  var qnorm=0, qw={}, qtotal=0;
+  var qw={}, qtotal=0, qmax=0, unseen=0;
   for(var g in qs){
-    var w=(IDX.idf[g]!==undefined?IDX.idf[g]:Math.log(1+IDX.chunks.length))*(1+Math.log(qs[g]));
-    qw[g]=w; qnorm+=w*w; qtotal+=w;
+    var known=IDX.idf[g]!==undefined;
+    var w=(known?IDX.idf[g]:Math.log(1+IDX.chunks.length))*(1+Math.log(qs[g]));
+    qw[g]=w; qtotal+=w; if(w>qmax) qmax=w;
+    if(!known) unseen+=w;
   }
-  qnorm=Math.sqrt(qnorm)||1; qtotal=qtotal||1;
-  var qmax=0; for(var g2 in qw) if(qw[g2]>qmax) qmax=qw[g2];
-  var nq=norm(q);
+  /* 提問裡有多少比例的詞，整個教材庫從來沒出現過。
+     比例越高，越可能是課程範圍外的問題（期末考、天氣、電影…） */
+  var unseenFrac=qtotal?unseen/qtotal:0;
+  var SW=1.0; qtotal+=singles.length*SW;
+  qtotal=qtotal||1;
+  var nq=norm(q), term=normQ(q);
+  /* 「單寧是…」「單寧（…」「單寧：…」這類定義句，對單一概念的提問特別有用 */
+  var defRe=(term.length>=2&&term.length<=8)?new RegExp(reEscQ(term)+'\\s*(是|指|為|係|：|:|（|\\()'):null;
   var out=[];
   for(i=0;i<IDX.chunks.length;i++){
-    var seen=IDX.sets[i], dot=0, covered=0, peak=0;
+    var seen=IDX.sets[i], covered=0, peak=0, tfs=0;
     for(var gg in qw){
       var cnt=seen[gg];
-      if(cnt){ dot+=qw[gg]*(IDX.idf[gg]||0)*(1+Math.log(cnt)); covered+=qw[gg]; if(qw[gg]>peak) peak=qw[gg]; }
+      if(cnt){
+        covered+=qw[gg]; if(qw[gg]>peak) peak=qw[gg];
+        tfs+=qw[gg]*Math.min(1,Math.log(1+cnt)/Math.log(4));
+      }
     }
-    if(!dot) continue;
-    /* 涵蓋率：問題裡的關鍵詞有多少比例出現在這個片段。
-       短問題對長段落時餘弦值天然偏低，用涵蓋率當主分數比較穩定，
-       再摻一點餘弦值來決定同分片段的先後。 */
-    var coverage=covered/qtotal;
-    var cosine=dot/(qnorm*IDX.norm[i]);
-    /* peak：問題裡最關鍵的那個詞有沒有命中。
-       即使其他字沒對上，只要專有名詞命中，通常就是對的段落。 */
-    var pk=peak/(qmax||1);
-    var score=coverage*0.50+pk*0.30+Math.min(1,cosine*3)*0.20;
-    var c=IDX.chunks[i];
+    var m=IDX.meta[i], c=IDX.chunks[i];
+    for(var si=0;si<singles.length;si++){ if(m.low.indexOf(singles[si])>=0) covered+=SW }
+    /* 原詞沒出現、但同義詞完整出現時，以 85% 權重計入 */
+    for(var yi=0;yi<syns.length;yi++){
+      var sy=syns[yi], has=sy.grams.every(function(g){return seen[g]});
+      if(has) continue;
+      var altHit=sy.alts.some(function(a){ return a.every(function(g){return seen[g]}) });
+      if(altHit){
+        sy.grams.forEach(function(g){
+          if(!seen[g]&&qw[g]){ covered+=qw[g]*0.85; if(qw[g]*0.85>peak) peak=qw[g]*0.85; tfs+=qw[g]*0.85*0.5 }
+        });
+      }
+    }
+    if(!covered) continue;
+    /* 涵蓋率：提問的關鍵詞有多少出現在片段裡
+       peak：最關鍵的詞有沒有命中
+       tf：關鍵詞在片段中出現幾次，出現多次代表這段就是在講它 */
+    var score=(covered/qtotal)*0.50+(peak/(qmax||1))*0.25+(tfs/qtotal)*0.15;
+    var head=0;
+    for(var hg in qw){ if(m.head.indexOf(hg)>=0){ head=0.06; break } }
+    var def=(defRe&&defRe.test(m.low))?0.10:0;
+    score+=head+def;
+    score*=Math.max(0.15,1-UNSEEN_K*unseenFrac);
+    /* 長度先驗：太短的片段資訊量不足，不該靠字少取勝 */
+    var prior=m.len>=80?1:Math.sqrt(Math.max(m.len,8)/80);
+    score*=prior;
+    /* 單字清單（品酒輪、表格標題）降權 */
+    if(m.listy) score*=0.55;
     /* 整句出現在片段裡，直接視為高度相關 */
-    if(nq.length>3&&norm(c.text).indexOf(nq)>=0) score=Math.max(score,0.92);
+    if(nq.length>3&&m.low.replace(/[^\u4e00-\u9fa5a-z0-9]+/g,'').indexOf(nq)>=0) score=Math.max(score,0.92);
     if(c.teacher) score*=1.08;
     out.push({c:c,score:score});
   }
@@ -1496,12 +1597,19 @@ try{ var _t=parseFloat(localStorage.getItem('sommThreshold')); if(!isNaN(_t)) TH
    從命中的段落裡挑出與提問最相關的句子，依原本順序組合，直到接近字數上限。 */
 var ANSWER_MAX=300;
 function splitSent(t){
-  var s=String(t).replace(/([.!?])\s+(?=[A-Z0-9"'(])/g,'$1\n');
+  /* 還原 PDF 轉檔的硬換行：上一行夠長、結尾不是標點、下一行接中文，就接回去 */
+  var lines=String(t).split('\n'), joined=[];
+  lines.forEach(function(L){
+    var prev=joined[joined.length-1];
+    if(prev!==undefined&&prev.length>=14&&/[\u4e00-\u9fa5，、]$/.test(prev)&&/^[\u4e00-\u9fa5]/.test(L)) joined[joined.length-1]=prev+L;
+    else joined.push(L);
+  });
+  var s=joined.join('\n').replace(/([.!?])\s+(?=[A-Z0-9"'(])/g,'$1\n');
   var out=s.match(/[^。！？；!?\n]+[。！？；!?]*/g)||[];
   return out.map(function(x){return x.trim()}).filter(function(x){return x.length>0});
 }
 function sentScore(q,s){
-  var ql=gramList(normQ(q)); if(!ql.length) return 0;
+  var ql=gramList(String(q||'').replace(STOP,' ')); if(!ql.length) ql=gramList(q); if(!ql.length) return 0;
   var ns=norm(s), tot=0, hit=0, seen={};
   for(var i=0;i<ql.length;i++){
     var g=ql[i]; if(seen[g]) continue; seen[g]=1;
@@ -1510,10 +1618,13 @@ function sentScore(q,s){
   return tot?hit/tot:0;
 }
 function joinSent(arr){
-  var out='';
-  arr.forEach(function(s){
-    if(out&&/[A-Za-z0-9)\u0002]$/.test(out)&&/^[A-Za-z0-9(]/.test(s)) out+=' ';
-    out+=s;
+  /* arr：[{s,si}]；不相鄰的句子之間加「……」表示中間有省略 */
+  var out='', prevSi=null;
+  arr.forEach(function(x){
+    var s=x.s;
+    if(out&&prevSi!==null&&x.si!==prevSi+1) out+='……';
+    else if(out&&/[A-Za-z0-9)\u0002]$/.test(out)&&/^[A-Za-z0-9(]/.test(s)) out+=' ';
+    out+=s; prevSi=x.si;
   });
   return out;
 }
@@ -1555,7 +1666,8 @@ function buildAnswer(q,hits){
     var used=0, chosen=[];
     for(var i=0;i<ranked.length;i++){
       var x=ranked[i];
-      if(used+x.len<=budget){ chosen.push(x); used+=x.len }
+      /* 每句預留 2 字給可能出現的「……」 */
+      if(used+x.len+2<=budget){ chosen.push(x); used+=x.len+2 }
       if(used>=budget-8) break;
     }
     /* 挑出來的內容太少時，補上最相關段落的開頭幾句當背景 */
@@ -1573,8 +1685,8 @@ function buildAnswer(q,hits){
     chosen.sort(function(a,b){return a.ci-b.ci||a.si-b.si});
     chosen.forEach(function(x){
       var last=paras[paras.length-1];
-      if(last&&last.ci===x.ci) last.parts.push(x.s);
-      else paras.push({ci:x.ci,parts:[x.s]});
+      if(last&&last.ci===x.ci) last.parts.push({s:x.s,si:x.si});
+      else paras.push({ci:x.ci,parts:[{s:x.s,si:x.si}]});
     });
     paras.forEach(function(p){ p.text=joinSent(p.parts) });
   }
@@ -1791,6 +1903,14 @@ document.getElementById('pasteadd').onclick=function(){
   document.getElementById('testgo').onclick=runTest;
   document.getElementById('testq').onkeydown=function(e){ if(e.key==='Enter') runTest() };
 })();
+document.getElementById('clearlocal').onclick=function(){
+  var local=KB.docs.filter(function(d){ return !d.md && !d.teacher });
+  if(!local.length){ toast('這台電腦沒有本機上傳的教材'); return }
+  if(!confirm('要移除這台電腦上傳的 '+local.length+' 份教材嗎？\n\nGitHub kb/ 裡的教材與教師補充的答案不受影響。')) return;
+  KB.docs=KB.docs.filter(function(d){ return d.md || d.teacher });
+  kbSave(); paintDocs(); paintBadges();
+  toast('已移除 '+local.length+' 份本機教材');
+};
 document.getElementById('expmanifest').onclick=function(){
   /* 只列非示範、非教師手寫的教材，也就是真的有對應 .md 檔的那些 */
   var files=KB.docs.filter(function(d){ return !d.seed && !d.teacher }).map(function(d){
@@ -1833,18 +1953,72 @@ function toast(msg){
 /* ---- 從 kb/ 目錄自動載入 Markdown 教材 ----
    在 repo 放 kb/manifest.json：{"files":[{"file":"week3.md","name":"葡萄酒賞析與服務 Week 3"}]}
    GitHub Pages 上會自動讀入並索引；讀不到就沿用示範教材。 */
+/* ---- 教材前處理 ----
+   1. 去掉 YAML 檔頭（--- id: ... ---）
+   2. 修正 PDF 轉檔常見的「部首＋本字」重複：⽔水 → 水、⼦子 → 子
+   3. 換頁符號、表格分隔線清掉 */
+function mdClean(text){
+  var t=String(text||'').replace(/^\uFEFF/,'').replace(/\r/g,'').replace(/\f/g,'\n');
+  t=t.replace(/^---\n[\s\S]*?\n---\n/,'');
+  t=t.replace(/[\u2E80-\u2FDF]/g,function(ch,i,s){
+    var n=ch.normalize('NFKC');
+    return (s.charAt(i+1)===n)?'':n;
+  });
+  t=t.replace(/^\s*\|?(\s*:?-{3,}:?\s*\|?)+\s*$/gm,'');
+  return t;
+}
+/* ---- 切段：把零碎的短段落合併成有意義的長度 ----
+   以前每遇到空行或標題就切一刀，清單、表格、品酒輪這類教材會切出大量
+   只有幾個字的碎片。現在累積到目標長度才切，標題併入片段當作上下文。 */
 function mdChunks(text){
-  var lines=text.split(/\r?\n/), out=[], sec='前言', buf=[];
-  function flush(){
-    var t=buf.join('\n').trim();
-    if(t.length>8) out.push({id:'md'+out.length+'_'+Date.now(),text:t.replace(/^#+\s*/gm,''),loc:sec});
-    buf=[];
-  }
+  var lines=mdClean(text).split('\n');
+  var paras=[], cur=[], sec='前言';
+  function endPara(){ var p=cur.join('\n').trim(); if(p) paras.push({sec:sec,text:p}); cur=[] }
   lines.forEach(function(L){
-    var m=L.match(/^(#{1,4})\s+(.*)$/);
-    if(m){ flush(); sec=m[2].trim(); return }
-    if(!L.trim()){ if(buf.length>2) flush(); else buf.push(''); return }
-    buf.push(L);
+    var m=L.match(/^(#{1,6})\s+(.*)$/);
+    if(m){
+      endPara();
+      var h=m[2].replace(/[*_`]/g,'').trim();
+      if(h){ sec=h; paras.push({sec:sec,head:true,text:h}) }
+      return;
+    }
+    if(!L.trim()){ endPara(); return }
+    cur.push(L);
+  });
+  endPara();
+
+  var MIN=80, TARGET=260, MAX=520;
+  var out=[], buf=[], len=0, bsec=null, stamp=Date.now();
+  function bodyLen(){ var n=0; buf.forEach(function(p){ if(!p.head) n+=p.text.length }); return n }
+  function flush(){
+    if(!buf.length) return;
+    if(!bodyLen()) return;                       /* 只有標題時先留著，接到下一段 */
+    var t=buf.map(function(p){return p.text}).join('\n').trim();
+    if(t.length>=10) out.push({id:'md'+out.length+'_'+stamp,text:t,loc:bsec||'前言'});
+    buf=[]; len=0; bsec=null;
+  }
+  function add(p){ if(!buf.length) bsec=p.sec; buf.push(p); len+=p.text.length }
+  function splitLong(t){
+    var ss=t.match(/[^。！？；!?\n]+[。！？；!?]*\n?/g)||[t], pieces=[], acc='';
+    ss.forEach(function(s){
+      if(acc&&(acc+s).length>MAX){ pieces.push(acc.trim()); acc='' }
+      acc+=s;
+    });
+    if(acc.trim()) pieces.push(acc.trim());
+    return pieces;
+  }
+  paras.forEach(function(p){
+    if(p.head){
+      if(bodyLen()>=MIN) flush();
+      add(p); return;
+    }
+    if(len&&len+p.text.length>MAX&&bodyLen()>=MIN) flush();
+    if(p.text.length>MAX){
+      splitLong(p.text).forEach(function(piece){ add({sec:p.sec,text:piece}); flush() });
+      return;
+    }
+    add(p);
+    if(len>=TARGET) flush();
   });
   flush();
   return out;
@@ -1886,38 +2060,57 @@ function ghDiscover(cb){
 }
 
 function kbLoadMarkdown(done){
-  KBLOAD={state:'loading',msg:'正在讀取 kb/manifest.json…',detail:[]};
+  KBLOAD={state:'loading',msg:'正在讀取教材清單…',detail:[]};
+  var manifestList=null, discovered=null, notes=[], pending=2;
+  function finish(){
+    if(--pending>0) return;
+    /* 清單檔與自動偵測取聯集：清單檔保證基本內容，自動偵測補上新加的檔案 */
+    var byFile={}, merged=[];
+    (manifestList||[]).forEach(function(it){ if(it&&it.file&&!byFile[it.file]){ byFile[it.file]=1; merged.push(it) } });
+    (discovered||[]).forEach(function(it){ if(!byFile[it.file]){ byFile[it.file]=1; merged.push(it) } });
+    merged=merged.filter(function(it){ return !/^(readme|index|manifest)\.(md|json)$/i.test(it.file) });
+    if(!merged.length){
+      kbStatus('err','找不到任何教材。'+notes.join('；')+'。請在 kb/ 放 .md 檔，或放一份 manifest.json。');
+      if(done)done(0); return;
+    }
+    KBLOAD.detail=notes.slice();
+    fetchAll(merged,done);
+  }
   var x=new XMLHttpRequest();
-  x.open('GET','kb/manifest.json',true);
+  x.open('GET','kb/manifest.json?t='+Math.floor(Date.now()/60000),true);
   x.onreadystatechange=function(){
     if(x.readyState!==4) return;
-    var list=null, why='';
     if(x.status===200||(x.status===0&&x.responseText)){
-      try{ list=(JSON.parse(x.responseText)||{}).files }catch(e){ why='manifest.json 格式錯誤：'+e.message }
-      if(list&&!list.length){ list=null; why='manifest.json 裡的 files 是空的' }
-    }else{
-      why='找不到 kb/manifest.json（HTTP '+x.status+'）';
-    }
-    if(!list){
-      /* 沒有清單檔就直接問 GitHub 這個資料夾有哪些檔案 */
-      kbStatus('loading',why+'，改用自動偵測…');
-      ghDiscover(function(files,msg){
-        if(!files||!files.length){
-          kbStatus('err',why+'。自動偵測也失敗：'+msg+'。請在 kb/ 放一份 manifest.json，或用教材管理頁的匯出功能產生。');
-          if(done)done(0); return;
-        }
-        KBLOAD.detail=['自動偵測：'+msg];
-        fetchAll(files,done);
-      });
-      return;
-    }
-    fetchAll(list,done);
+      try{
+        var l=(JSON.parse(x.responseText)||{}).files;
+        if(l&&l.length){ manifestList=l; notes.push('清單檔列出 '+l.length+' 個') }
+        else notes.push('清單檔是空的');
+      }catch(e){ notes.push('清單檔格式錯誤：'+e.message) }
+    }else notes.push('沒有清單檔');
+    finish();
   };
-  x.onerror=function(){
-    kbStatus('err','讀取 kb/manifest.json 時發生網路錯誤。若你是用 file:// 直接開啟本機檔案，瀏覽器會擋住，請改用網址開啟。');
-    if(done)done(0);
-  };
+  x.onerror=function(){ notes.push('清單檔讀取失敗'); finish() };
   x.send();
+
+  /* 自動偵測的結果在本機快取 30 分鐘。GitHub 對未登入的查詢有每小時次數上限，
+     同一所學校的學生共用對外 IP，全班同時開啟很容易用完。 */
+  var CK='sommKbDiscover_'+location.pathname, cached=null;
+  try{ cached=JSON.parse(localStorage.getItem(CK)||'null') }catch(e){}
+  if(cached&&cached.at&&Date.now()-cached.at<30*60*1000&&cached.files){
+    discovered=cached.files; notes.push('自動偵測（快取）'+cached.files.length+' 個'); finish();
+  }else{
+    ghDiscover(function(files,msg){
+      if(files&&files.length){
+        discovered=files;
+        try{ localStorage.setItem(CK,JSON.stringify({at:Date.now(),files:files})) }catch(e){}
+        notes.push('自動偵測 '+files.length+' 個');
+      }else{
+        if(cached&&cached.files){ discovered=cached.files; notes.push('自動偵測失敗，改用上次結果') }
+        else notes.push('自動偵測：'+msg);
+      }
+      finish();
+    });
+  }
 }
 
 function fetchAll(list,done){
