@@ -361,8 +361,8 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
       <div class="foot-meta">
         <div class="row"><span>學院</span><span>人文暨設計學院</span></div>
         <div class="row"><span>系所</span><a href="https://sl.lhu.edu.tw/index.php" target="_blank" rel="noopener noreferrer">觀光休閒系</a></div>
-        <div class="row"><span>指導教師</span><a href="https://sl.lhu.edu.tw/p/404-1004-499.php?Lang=zh-tw" target="_blank" rel="noopener noreferrer">謝美婷 (Mei-ting Hsieh)</a></div>
-        <div class="row"><span>職稱</span><span>副教授兼任副研發長</span></div>
+        <div class="row"><span>任課老師</span><a href="https://sl.lhu.edu.tw/p/404-1004-499.php?Lang=zh-tw" target="_blank" rel="noopener noreferrer">謝美婷 (Mei-ting Hsieh)</a></div>
+        <div class="row"><span>職稱</span><span>副教授</span></div>
         <div class="row"><span>課程</span><span>葡萄酒賞析與服務</span></div>
       </div>
     </div>
@@ -455,6 +455,10 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
         <div class="t-uprow">
           <button class="t-btn alt" id="clearlocal">清除本機上傳的教材</button>
           <span class="t-note">教材放進 GitHub 的 kb/ 之後，請清掉這台電腦先前上傳的副本，避免同一份教材重複出現。教師補充的答案會保留。</span>
+        </div>
+        <div class="t-uprow">
+          <button class="t-btn alt" id="expteacher">匯出教師補充為 .md</button>
+          <span class="t-note">教師補充的答案只存在這台電腦。匯出後放進 GitHub 的 kb/，全班每台裝置才都能查到。</span>
         </div>
         <div class="t-uprow">
           <button class="t-btn alt" id="expmanifest">匯出 kb/manifest.json</button>
@@ -1398,6 +1402,9 @@ function kbChunks(){
   var out=[];
   KB.docs.forEach(function(d){
     if(!d.active) return;
+    /* 只使用線上 kb/ 的教材與教師補充；本機上傳的檔案只供檢視，不參與檢索，
+       確保每台裝置的答案一致 */
+    if(!d.md&&!d.teacher) return;
     d.chunks.forEach(function(c){ out.push({docId:d.id,docName:d.name,teacher:!!d.teacher,id:c.id,text:c.text,loc:c.loc}) });
   });
   return out;
@@ -1821,7 +1828,9 @@ function paintDocs(){
     h+='<div class="doc'+(d.active?'':' off')+'">'+
        '<div class="dn">'+esc(d.name)+'<div class="dm">'+n+' 個片段　'+fmtTime(d.at)+
        (d.seed?'　<span class="seed">示範教材</span>':'')+(d.teacher?'　<span class="seed">教師補充</span>':'')+
-       (d.md?'　<span class="seed">來自 kb/</span>':'')+'</div></div>'+
+       (d.md?'　<span class="seed">線上 kb/</span>':'')+
+       (!d.md&&!d.teacher?'　<span class="seed" style="color:var(--ink-faint)">本機暫存・不參與檢索</span>':'')+
+       (d.teacher?'　<span class="seed">僅存於這台電腦，請匯出放進 kb/</span>':'')+'</div></div>'+
        '<div class="doc-act">'+
        '<button class="t-btn alt" data-tog="'+d.id+'">'+(d.active?'停用':'啟用')+'</button>'+
        '<button class="t-btn warn" data-rm="'+d.id+'">刪除</button></div></div>';
@@ -1911,10 +1920,25 @@ document.getElementById('clearlocal').onclick=function(){
   kbSave(); paintDocs(); paintBadges();
   toast('已移除 '+local.length+' 份本機教材');
 };
+document.getElementById('expteacher').onclick=function(){
+  var tds=KB.docs.filter(function(d){ return d.teacher });
+  if(!tds.length){ toast('目前沒有教師補充的內容'); return }
+  var md='# 教師補充\n\n';
+  tds.forEach(function(d){
+    var title=String(d.name||'').replace(/^教師補充：/,'').trim()||'補充';
+    md+='## '+title+'\n\n'+d.chunks.map(function(c){return c.text}).join('\n\n')+'\n\n';
+  });
+  var blob=new Blob([md],{type:'text/markdown;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='教師補充.md';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(a.href) },1000);
+  toast('已匯出 '+tds.length+' 筆。放進 kb/ 並在 manifest.json 加上「教師補充.md」即可');
+};
 document.getElementById('expmanifest').onclick=function(){
   /* 只列非示範、非教師手寫的教材，也就是真的有對應 .md 檔的那些 */
-  var files=KB.docs.filter(function(d){ return !d.seed && !d.teacher }).map(function(d){
-    var fn=d.name;
+  var files=KB.docs.filter(function(d){ return d.md || (!d.seed && !d.teacher) }).map(function(d){
+    var fn=d.md?String(d.id).replace(/^md-/,''):d.name;
     if(!/\.(md|txt|csv|json)$/i.test(fn)) fn=fn+'.md';
     return {file:fn, name:d.name.replace(/\.(md|txt|csv|json)$/i,'')};
   });
@@ -2027,130 +2051,135 @@ function mdChunks(text){
 var KBLOAD={state:'idle',msg:'尚未載入',detail:[]};
 function kbStatus(state,msg){ KBLOAD.state=state; KBLOAD.msg=msg; if(teacherEl&&teacherEl.classList.contains('on')) paintDocs(); }
 
-/* ---- 找不到 manifest.json 時，直接問 GitHub 這個資料夾有哪些檔 ----
-   從網址推導 owner / repo / 子路徑，公開 repo 可直接查詢，不需金鑰。 */
+/* ==================================================================
+   教材載入（線上 kb/）
+   原則：任何一個請求都不能讓整個流程卡住。
+   1. 先讀 kb/manifest.json，讀到就立刻開始載入教材
+   2. GitHub 自動偵測在背景進行，只負責補上清單檔沒列到的新檔案
+   3. 每個請求都有逾時；整體另有 25 秒保險，時間到就用已載入的內容收尾
+   ================================================================== */
+function once(fn){ var d=false; return function(){ if(d) return; d=true; return fn.apply(this,arguments) } }
+function xget(url,ms,cb){
+  var fin=once(cb), x;
+  try{ x=new XMLHttpRequest(); x.open('GET',url,true); x.timeout=ms }catch(e){ fin(0,''); return }
+  x.onreadystatechange=function(){ if(x.readyState===4) fin(x.status,x.responseText||'') };
+  x.onerror=function(){ fin(0,'') };
+  x.ontimeout=function(){ fin(-1,'') };
+  try{ x.send() }catch(e){ fin(0,'') }
+  setTimeout(function(){ fin(-1,'') },ms+1500);
+}
+/* 外層網站的 Service Worker 連線失敗時會回傳首頁 HTML，不能當成教材 */
+function looksHtml(t){ return /^\s*<(!doctype|html|head|body)/i.test(String(t||'').slice(0,200)) }
+
 function ghDiscover(cb){
+  var fin=once(cb);
   var host=location.hostname;
-  if(!/\.github\.io$/i.test(host)){ cb(null,'非 github.io 網域，無法自動偵測'); return }
+  if(!/\.github\.io$/i.test(host)){ fin(null,'非 github.io 網域，略過自動偵測'); return }
   var owner=host.replace(/\.github\.io$/i,'');
-  var parts=location.pathname.split('/').filter(Boolean);
+  var parts=location.pathname.split('/').filter(Boolean).filter(function(p){return !/\.html?$/i.test(p)});
   var repo, sub;
-  if(!parts.length){ repo=host; sub=''; }
-  else if(parts.length===1&&/\.html?$/i.test(parts[0])){ repo=host; sub=''; }
-  else { repo=parts[0]; sub=parts.slice(1).filter(function(p){return !/\.html?$/i.test(p)}).join('/'); }
+  if(!parts.length){ repo=host; sub='' } else { repo=parts[0]; sub=parts.slice(1).join('/') }
   var apiPath=(sub?sub+'/':'')+'kb';
   var url='https://api.github.com/repos/'+owner+'/'+repo+'/contents/'+apiPath.split('/').map(encodeURIComponent).join('/');
-  var x=new XMLHttpRequest();
-  x.open('GET',url,true);
-  x.onreadystatechange=function(){
-    if(x.readyState!==4) return;
-    if(x.status!==200){ cb(null,'GitHub 目錄查詢失敗（HTTP '+x.status+'）'+(x.status===403?'，可能是查詢次數達上限，稍後再試':'')); return }
-    var arr=null;
-    try{ arr=JSON.parse(x.responseText) }catch(e){}
-    if(!arr||!arr.length){ cb(null,'GitHub 回傳空目錄'); return }
+  xget(url,6000,function(status,text){
+    if(status===-1){ fin(null,'GitHub 查詢逾時'); return }
+    if(status!==200){ fin(null,'GitHub 查詢失敗（'+(status||'連線錯誤')+'）'+(status===403?'，可能是查詢次數達上限':'')); return }
+    var arr=null; try{ arr=JSON.parse(text) }catch(e){}
+    if(!arr||!arr.length){ fin(null,'GitHub 回傳內容無法解析'); return }
     var files=arr.filter(function(it){
-      return it.type==='file' && /\.(md|txt|csv)$/i.test(it.name) && !/^readme\.md$/i.test(it.name);
-    }).map(function(it){
-      return { file:it.name, name:it.name.replace(/\.(md|txt|csv)$/i,'') };
-    });
-    cb(files,files.length?('自動偵測到 '+files.length+' 個檔案'):'目錄裡沒有 .md 檔');
-  };
-  x.onerror=function(){ cb(null,'GitHub 目錄查詢連線失敗') };
-  x.send();
+      return it.type==='file'&&/\.(md|txt|csv)$/i.test(it.name)&&!/^readme\.md$/i.test(it.name);
+    }).map(function(it){ return {file:it.name,name:it.name.replace(/\.(md|txt|csv)$/i,'')} });
+    fin(files,'自動偵測 '+files.length+' 個');
+  });
 }
 
+var KBRUN=0;
 function kbLoadMarkdown(done){
+  var run=++KBRUN;                                  /* 重新載入時，舊的一輪結果一律丟棄 */
+  var requested={}, fileState={}, notes=[], ops=2, added=0, failed=0;
   KBLOAD={state:'loading',msg:'正在讀取教材清單…',detail:[]};
-  var manifestList=null, discovered=null, notes=[], pending=2;
-  function finish(){
-    if(--pending>0) return;
-    /* 清單檔與自動偵測取聯集：清單檔保證基本內容，自動偵測補上新加的檔案 */
-    var byFile={}, merged=[];
-    (manifestList||[]).forEach(function(it){ if(it&&it.file&&!byFile[it.file]){ byFile[it.file]=1; merged.push(it) } });
-    (discovered||[]).forEach(function(it){ if(!byFile[it.file]){ byFile[it.file]=1; merged.push(it) } });
-    merged=merged.filter(function(it){ return !/^(readme|index|manifest)\.(md|json)$/i.test(it.file) });
-    if(!merged.length){
-      kbStatus('err','找不到任何教材。'+notes.join('；')+'。請在 kb/ 放 .md 檔，或放一份 manifest.json。');
-      if(done)done(0); return;
-    }
-    KBLOAD.detail=notes.slice();
-    fetchAll(merged,done);
+  /* 先清掉上一次從 kb/ 載入的教材，避免重複 */
+  KB.docs=KB.docs.filter(function(d){ return !d.md });
+  kbInvalidate();
+  var finalize=once(function(){
+    if(run!==KBRUN) return;
+    var docs=KB.docs.filter(function(d){return d.md}), ch=0;
+    docs.forEach(function(d){ ch+=d.chunks.length });
+    KBLOAD.detail=notes.concat(Object.keys(fileState).sort().map(function(f){return fileState[f]}));
+    kbSave();
+    if(docs.length) kbStatus('ok','已從線上 kb/ 載入 '+docs.length+' 份教材，共 '+ch+' 個片段。'+(failed?'（'+failed+' 份失敗）':''));
+    else kbStatus('err','沒有載入任何教材。'+notes.join('；'));
+    if(typeof paintBadges==='function') paintBadges();
+    if(done) done(docs.length);
+  });
+  function progress(){
+    if(run!==KBRUN) return;
+    var n=KB.docs.filter(function(d){return d.md}).length;
+    kbStatus('loading','已載入 '+n+' 份教材'+(ops>0?'，讀取中…':''));
   }
-  var x=new XMLHttpRequest();
-  x.open('GET','kb/manifest.json?t='+Math.floor(Date.now()/60000),true);
-  x.onreadystatechange=function(){
-    if(x.readyState!==4) return;
-    if(x.status===200||(x.status===0&&x.responseText)){
-      try{
-        var l=(JSON.parse(x.responseText)||{}).files;
-        if(l&&l.length){ manifestList=l; notes.push('清單檔列出 '+l.length+' 個') }
-        else notes.push('清單檔是空的');
-      }catch(e){ notes.push('清單檔格式錯誤：'+e.message) }
-    }else notes.push('沒有清單檔');
-    finish();
-  };
-  x.onerror=function(){ notes.push('清單檔讀取失敗'); finish() };
-  x.send();
+  function opDone(){ if(--ops<=0) finalize(); else progress() }
+  function fetchFiles(list,cb){
+    var todo=(list||[]).filter(function(it){
+      if(!it||!it.file||requested[it.file]) return false;
+      if(/^(readme|index|manifest)\.(md|json)$/i.test(it.file)) return false;
+      requested[it.file]=1; return true;
+    });
+    if(!todo.length){ cb(); return }
+    var left=todo.length;
+    todo.forEach(function(item){
+      xget('kb/'+encodeURIComponent(item.file),15000,function(status,text){
+        if(run!==KBRUN) return;
+        if((status===200||(status===0&&text))&&!looksHtml(text)){
+          var chs=mdChunks(text);
+          if(chs.length){
+            var id='md-'+item.file;
+            KB.docs=KB.docs.filter(function(d){ return d.id!==id });
+            KB.docs.push({id:id,name:item.name||item.file,md:true,active:true,at:Date.now(),chunks:chs});
+            added++; fileState[item.file]='✓ '+item.file+'　'+chs.length+' 個片段';
+            kbInvalidate();
+          }else{ failed++; fileState[item.file]='✗ '+item.file+'　內容是空的' }
+        }else{
+          failed++;
+          fileState[item.file]='✗ '+item.file+'　'+(status===-1?'逾時':status===404?'找不到（檔名或大小寫不符）':looksHtml(text)?'讀到的是網頁而不是教材':'讀取失敗 '+status);
+        }
+        progress();
+        if(--left===0) cb();
+      });
+    });
+  }
 
-  /* 自動偵測的結果在本機快取 30 分鐘。GitHub 對未登入的查詢有每小時次數上限，
-     同一所學校的學生共用對外 IP，全班同時開啟很容易用完。 */
+  /* 1. 清單檔：讀到就立刻載入 */
+  xget('kb/manifest.json?t='+Math.floor(Date.now()/60000),8000,function(status,text){
+    if(run!==KBRUN) return;
+    var list=null;
+    if(status===200&&!looksHtml(text)){
+      try{ list=(JSON.parse(text)||{}).files }catch(e){ notes.push('清單檔格式錯誤：'+e.message) }
+      if(list&&list.length) notes.push('清單檔列出 '+list.length+' 份');
+      else if(list) notes.push('清單檔是空的');
+    }else notes.push(status===-1?'清單檔讀取逾時':'沒有清單檔（'+(status||'連線錯誤')+'）');
+    if(list&&list.length) fetchFiles(list,opDone); else opDone();
+  });
+
+  /* 2. 自動偵測：背景進行，只補新檔。結果快取 30 分鐘 */
   var CK='sommKbDiscover_'+location.pathname, cached=null;
   try{ cached=JSON.parse(localStorage.getItem(CK)||'null') }catch(e){}
   if(cached&&cached.at&&Date.now()-cached.at<30*60*1000&&cached.files){
-    discovered=cached.files; notes.push('自動偵測（快取）'+cached.files.length+' 個'); finish();
+    notes.push('自動偵測（快取）'+cached.files.length+' 個');
+    fetchFiles(cached.files,opDone);
   }else{
     ghDiscover(function(files,msg){
+      if(run!==KBRUN) return;
       if(files&&files.length){
-        discovered=files;
         try{ localStorage.setItem(CK,JSON.stringify({at:Date.now(),files:files})) }catch(e){}
-        notes.push('自動偵測 '+files.length+' 個');
-      }else{
-        if(cached&&cached.files){ discovered=cached.files; notes.push('自動偵測失敗，改用上次結果') }
-        else notes.push('自動偵測：'+msg);
-      }
-      finish();
+        notes.push(msg); fetchFiles(files,opDone);
+      }else if(cached&&cached.files){
+        notes.push(msg+'，改用上次結果'); fetchFiles(cached.files,opDone);
+      }else{ notes.push(msg); opDone() }
     });
   }
-}
 
-function fetchAll(list,done){
-  {
-    var pending=list.length, added=0, chunks=0;
-    KBLOAD.state='loading'; KBLOAD.msg='找到 '+list.length+' 份教材，讀取中…'; KBLOAD.detail=[];
-    /* 先移除上一次自動載入的，避免重複 */
-    KB.docs=KB.docs.filter(function(d){ return !d.md });
-    list.forEach(function(item){
-      var y=new XMLHttpRequest();
-      y.open('GET','kb/'+encodeURIComponent(item.file),true);
-      y.onreadystatechange=function(){
-        if(y.readyState!==4) return;
-        if(y.status===200||(y.status===0&&y.responseText)){
-          var ch=mdChunks(y.responseText||'');
-          if(ch.length){
-            KB.docs.push({id:'md-'+item.file,name:item.name||item.file,md:true,active:true,at:Date.now(),chunks:ch});
-            added++; chunks+=ch.length;
-            KBLOAD.detail.push('✓ '+item.file+'　'+ch.length+' 個片段');
-          }else{
-            KBLOAD.detail.push('✗ '+item.file+'　讀到了但切不出片段，檔案可能是空的或段落太短');
-          }
-        }else{
-          KBLOAD.detail.push('✗ '+item.file+'　HTTP '+y.status+'，檔名或大小寫可能不符');
-        }
-        if(--pending===0){
-          kbSave();
-          if(added) kbStatus('ok','已自動載入 '+added+' 份教材，共 '+chunks+' 個片段。');
-          else kbStatus('err','manifest 讀到了，但所有檔案都載入失敗。');
-          if(typeof paintBadges==='function') paintBadges();
-          if(done)done(added);
-        }
-      };
-      y.onerror=function(){
-        KBLOAD.detail.push('✗ '+item.file+'　網路錯誤');
-        if(--pending===0){ kbSave(); kbStatus('err','部分檔案載入失敗。'); if(done)done(added) }
-      };
-      y.send();
-    });
-  }
+  /* 3. 整體保險：不論哪個請求沒回應，25 秒後都以已載入的內容收尾 */
+  setTimeout(function(){ if(run===KBRUN){ notes.push('部分請求逾時，已用目前載入的內容'); finalize() } },25000);
 }
 
 /* 接線：自由提問改走真實檢索；登入頁加教師入口 */
