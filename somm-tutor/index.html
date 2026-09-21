@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-Hant" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 侍酒師學習助理｜介面原型</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>AI侍酒師問答庫</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@500;600&display=swap" rel="stylesheet">
@@ -49,7 +49,7 @@ input{font-family:inherit;font-size:inherit}
 .notice .tog{background:none;border:1px solid rgba(255,255,255,.35);color:inherit;border-radius:999px;padding:1px 10px;font-size:11.5px}
 
 /* login */
-.login{min-height:calc(100vh - 34px);display:flex;flex-direction:column}
+.login{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;position:relative}
 .login-main{flex:1;display:flex;align-items:center;justify-content:center;gap:56px;padding:48px 24px 36px;flex-wrap:wrap}
 .login-fig{width:190px;flex:0 0 auto}
 .login-fig svg{width:100%;height:auto;display:block}
@@ -79,7 +79,7 @@ input{font-family:inherit;font-size:inherit}
 .foot-meta a:hover{color:var(--wine);border-color:var(--wine)}
 
 /* app */
-.app{display:none;height:calc(100vh - 34px);overflow:hidden}
+.app{display:none;height:100vh;height:100dvh;overflow:hidden}
 .app.on{display:grid;grid-template-columns:230px minmax(0,1fr) 322px}
 .col{min-width:0;overflow-y:auto;overscroll-behavior:contain}
 .hist{background:var(--surface-2);border-right:1px solid var(--rule);padding:18px 14px}
@@ -93,14 +93,16 @@ input{font-family:inherit;font-size:inherit}
 .hist .hint{font-size:12px;color:var(--ink-faint);line-height:1.7;margin-top:20px;padding:0 11px}
 
 .chat{display:flex;flex-direction:column;background:var(--paper);height:100%;overflow:hidden}
-.stage{display:flex;align-items:flex-end;gap:16px;padding:10px 24px 0;border-bottom:1px solid var(--rule);background:var(--surface);flex:0 0 auto}
+.stage{display:flex;align-items:flex-end;gap:16px;padding:10px 24px 0;padding-top:calc(10px + env(safe-area-inset-top,0px));border-bottom:1px solid var(--rule);background:var(--surface);flex:0 0 auto}
+.stage-act{display:flex;gap:6px;align-self:center}
+.chat{min-height:0}
 .stage .figbox{width:92px;flex:0 0 auto;position:relative}
 .stage .figbox svg{width:100%;height:auto;display:block}
 .stage .meta{flex:1;padding-bottom:13px;min-width:0}
 .who{font-size:14px;font-weight:500;line-height:1.4}
 .state{font-size:12px;color:var(--ink-faint)}
 
-.stream{flex:1;overflow-y:auto;padding:22px 24px 8px}
+.stream{flex:1 1 auto;min-height:0;overflow-y:auto;padding:22px 24px 8px;overscroll-behavior:contain}
 .wrap{max-width:650px;margin:0 auto}
 .msg{margin-bottom:22px}
 .msg .lbl{font-size:12px;color:var(--ink-faint);margin-bottom:5px}
@@ -119,8 +121,10 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
 .flag{display:inline-flex;align-items:center;gap:6px;margin-top:11px;font-size:12px;padding:3px 10px;border-radius:999px;background:var(--gold-tint);color:var(--gold);border:1px solid var(--gold-rule)}
 .thinking{font-size:13px;color:var(--ink-faint)}
 
-.composer{flex:0 0 auto;border-top:1px solid var(--rule);background:var(--surface);padding:13px 24px 17px}
-.chips{max-width:650px;margin:0 auto 11px;display:flex;gap:7px;flex-wrap:wrap}
+.composer{flex:0 0 auto;border-top:1px solid var(--rule);background:var(--surface);padding:11px 24px calc(13px + env(safe-area-inset-bottom,0px));position:sticky;bottom:0;z-index:5}
+.chips{max-width:650px;margin:0 auto 10px;display:flex;gap:7px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.chips::-webkit-scrollbar{display:none}
+.chips .chip,.chips .cl{flex:0 0 auto;white-space:nowrap}
 .chip{background:var(--surface-2);border:1px solid var(--rule);border-radius:999px;padding:5px 13px;font-size:12.5px;color:var(--ink-soft)}
 .chip:hover{border-color:var(--wine);color:var(--wine);background:var(--wine-tint)}
 .chip.edge{border-style:dashed;border-color:var(--gold-rule);color:var(--gold)}
@@ -169,8 +173,17 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
   .mobtabs{display:flex;border-bottom:1px solid var(--rule);background:var(--surface)}
   .mobtabs button{flex:1;padding:10px;background:none;border:none;font-size:13px;color:var(--ink-soft);border-bottom:2px solid transparent}
   .mobtabs button.on{color:var(--wine);border-bottom-color:var(--wine)}
-  .stage .figbox{width:70px}
-  .stream,.composer,.stage,  .login-main{gap:24px}.login-fig{width:130px}
+  .stage .figbox{width:62px}
+  .stage{gap:10px}
+  .stage .meta{padding-bottom:9px}
+  .stream,.composer,.stage{padding-left:14px;padding-right:14px}
+  .entry input{min-width:0;font-size:16px}
+  .login-main{gap:24px}.login-fig{width:130px}
+}
+@media (max-height:560px){
+  .stage .figbox{width:48px}
+  .stage .meta .state{display:none}
+  .chips{margin-bottom:7px}
 }
 
 .gate{position:fixed;inset:0;background:rgba(20,16,25,.72);display:none;align-items:center;justify-content:center;z-index:60;padding:24px}
@@ -185,8 +198,22 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
 .gate-act button{flex:1;padding:9px;border-radius:3px;font-size:13.5px;font-weight:500}
 .gate-act .go{background:var(--wine);color:var(--wine-ink);border:1px solid var(--wine)}
 .gate-act .no{background:var(--surface-2);color:var(--ink-soft);border:1px solid var(--rule)}
+.themetog{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));right:16px;z-index:8;background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:4px 13px;font-size:12px;color:var(--ink-soft)}
+.themetog:hover,.themetog-in:hover{border-color:var(--wine);color:var(--wine)}
+/* 教材段落彈窗 */
+.pop{position:fixed;inset:0;background:rgba(12,9,15,.66);display:none;align-items:center;justify-content:center;z-index:70;padding:20px}
+.pop.on{display:flex}
+.pop-box{background:var(--surface);border:1px solid var(--rule);border-radius:5px;width:100%;max-width:560px;max-height:min(78vh,78dvh);display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.pop-head{padding:16px 20px 12px;border-bottom:1px solid var(--rule);display:flex;gap:12px;align-items:flex-start}
+.pop-head .pt{font-family:var(--serif);font-size:16.5px;font-weight:600;line-height:1.45;flex:1}
+.pop-head .pl{font-size:12px;color:var(--ink-faint);margin-top:3px;font-family:var(--sans);font-weight:400}
+.pop-x{background:none;border:1px solid var(--rule);border-radius:999px;padding:3px 12px;font-size:12.5px;color:var(--ink-soft);flex:0 0 auto}
+.pop-x:hover{border-color:var(--wine);color:var(--wine)}
+.pop-body{padding:16px 20px 20px;overflow-y:auto;font-size:14.5px;line-height:1.95;white-space:pre-wrap;word-break:break-word}
+.pop-body mark,.srcitem .ex mark{background:#FFE14D;color:#1D1A10;padding:0 2px;border-radius:2px}
+.pop-note{padding:0 20px 14px;font-size:11.5px;color:var(--ink-faint)}
 /* teacher */
-.teacher{display:none;height:calc(100vh - 34px);flex-direction:column;background:var(--paper)}
+.teacher{display:none;height:100vh;height:100dvh;flex-direction:column;background:var(--paper)}
 .teacher.on{display:flex}
 .t-top{display:flex;align-items:center;gap:20px;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--rule);flex-wrap:wrap}
 .t-title{font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.3}
@@ -242,10 +269,7 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
 </head>
 <body>
 
-<div class="notice">
-  <span><b>介面原型</b>　回答為預先寫好的示範內容，未連接教材知識庫。語音使用瀏覽器內建引擎，實際發音依你的作業系統而定。</span>
-  <button class="tog" id="theme">切換深色</button>
-</div>
+<button class="themetog" id="themeLogin" aria-label="切換色系">淺色</button>
 
 <section class="login" id="login">
   <div class="login-main">
@@ -314,8 +338,8 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
 </svg>
 </div>
     <div class="login-card">
-      <h1>AI 侍酒師學習助理</h1>
-      <p class="sub">葡萄酒賞析與服務課程專用。回答依老師提供的教材，教材沒有的內容不會憑空回答。</p>
+      <h1>AI侍酒師問答庫</h1>
+      <p class="sub">葡萄酒賞析與服務課程專用。</p>
       <div class="field"><label for="em">電子郵件</label><input id="em" type="email" placeholder="your.name@gm.lhu.edu.tw" autocomplete="email"></div>
       <div class="field"><label for="pw">密碼</label><input id="pw" type="password" placeholder="至少 10 個字元" autocomplete="current-password"></div>
       <button class="btn-primary" id="signin">登入</button>
@@ -356,6 +380,17 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
   </div>
 </div>
 
+<div class="pop" id="pop" role="dialog" aria-modal="true" aria-labelledby="popt">
+  <div class="pop-box">
+    <div class="pop-head">
+      <div class="pt" id="popt"></div>
+      <button class="pop-x" id="popx">關閉</button>
+    </div>
+    <div class="pop-body" id="popb"></div>
+    <div class="pop-note">黃色標示為與提問相關的關鍵字</div>
+  </div>
+</div>
+
 <!-- ============ TEACHER ============ -->
 <div class="teacher" id="teacher">
   <div class="t-top">
@@ -368,6 +403,7 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
       <button class="t-tab" data-t="docs">教材管理 <b id="doccount">0</b></button>
       <button class="t-tab" data-t="test">檢索測試</button>
     </div>
+    <button class="chip themetog-in" aria-label="切換色系">淺色</button>
     <button class="chip" id="t-back">回學生介面</button>
   </div>
 
@@ -502,10 +538,13 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
 </svg>
 </div>
       <div class="meta">
-        <div class="who">AI 侍酒師學習助理</div>
+        <div class="who">AI侍酒師問答庫</div>
         <div class="state" id="state">待命中</div>
               </div>
-      <button class="chip" id="backbtn" style="align-self:center">回登入頁</button>
+      <div class="stage-act">
+        <button class="chip themetog-in" aria-label="切換色系">淺色</button>
+        <button class="chip" id="backbtn">回登入頁</button>
+      </div>
     </div>
 
     <div class="stream" id="stream"><div class="wrap" id="wrap"></div></div>
@@ -534,13 +573,24 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
 var reduce=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
 
 /* ---------- theme ---------- */
-var themeBtn=document.getElementById('theme');
-themeBtn.onclick=function(){
-  var cur=document.documentElement.getAttribute('data-theme');
-  var dark=cur?cur==='dark':window.matchMedia('(prefers-color-scheme:dark)').matches;
-  document.documentElement.setAttribute('data-theme',dark?'light':'dark');
-  themeBtn.textContent=dark?'切換深色':'切換淺色';
-};
+/* 預設深色；使用者選擇會記住 */
+(function(){
+  try{ var saved=localStorage.getItem('sommTheme'); if(saved==='light'||saved==='dark') document.documentElement.setAttribute('data-theme',saved) }catch(e){}
+  function paint(){
+    var dark=document.documentElement.getAttribute('data-theme')!=='light';
+    document.querySelectorAll('.themetog,.themetog-in').forEach(function(b){ b.textContent=dark?'淺色':'深色' });
+  }
+  document.querySelectorAll('.themetog,.themetog-in').forEach(function(b){
+    b.onclick=function(){
+      var dark=document.documentElement.getAttribute('data-theme')!=='light';
+      var next=dark?'light':'dark';
+      document.documentElement.setAttribute('data-theme',next);
+      try{ localStorage.setItem('sommTheme',next) }catch(e){}
+      paint();
+    };
+  });
+  paint();
+})();
 
 /* ---------- content ---------- */
 var DOCS={
@@ -585,10 +635,7 @@ var ANSWERS={
   html:'<p>這個問題不在葡萄酒賞析與服務的課程範圍內，所以我不會直接回答。</p>'+
        '<p>如果你想聊葡萄酒、餐酒搭配或侍酒服務，我隨時可以繼續。</p>'}
 };
-var CHIPS=[["q1","Cabernet Sauvignon 適合搭配什麼？",0],["q2","紅酒為什麼需要醒酒？",0],
- ["q3","正式侍酒服務流程是什麼？",0],["q4","如何向顧客介紹 Pinot Noir？",0],
- ["q5","餐酒搭配有哪些基本原則？",0],["quiz","AI 測驗我",0],
- ["low","教材查不到的問題",1],["off","課程範圍外的問題",1]];
+var CHIPS=[["q2","紅酒為什麼需要醒酒？",0],["q5","餐酒搭配有哪些基本原則？",0],["quiz","AI 測驗我",0]];
 
 /* ---------- avatar control ---------- */
 var mouth=null, figbox=document.getElementById('figbox'), mouthTimer=null;
@@ -721,8 +768,9 @@ function browPulse(){
 
 /* --- 狀態：每種狀態有自己的姿勢 --- */
 function setState(s){
-  FIG.mode=s;
-  if(stateEl) stateEl.textContent={idle:'待命中',think:'正在搜尋課程教材…',speak:'正在回答…',listen:'正在聆聽…'}[s]||'待命中';
+  FIG.mode=(s==='readq')?'speak':s;
+  if(stateEl) stateEl.textContent={idle:'待命中',think:'正在搜尋課程教材…',speak:'正在回答…',listen:'正在聆聽…',readq:'正在朗讀你的問題…'}[s]||'待命中';
+  if(s==='readq') s='speak';
   if(!FIG.head){ if(s!=='speak') stopMouth(); return }
   if(reduce){ if(s!=='speak') stopMouth(); return }
   if(s==='listen'){
@@ -813,7 +861,7 @@ function playPack(id,onDone){
   a.play().catch(function(){ stopMouth(); if(onDone)onDone() });
 }
 function stopPack(){ if(PACK.audio){ try{PACK.audio.pause()}catch(e){} PACK.audio=null } }
-probePack();
+/* 預錄語音包已停用：一律使用即時合成 */
 
 /* 即時語音端點：POST {text,voice,rate,pitch} → 回傳 audio/mpeg。金鑰留在伺服器端。 */
 var LIVE={url:'',busy:false};
@@ -982,16 +1030,20 @@ function splitSentences(t){
 }
 function speak(text,onDone,lineId){
   if(!ttsOn){ if(onDone)onDone(); return }
-  stopPack(); if(synth) synth.cancel();
+  stopPack(); SPEAKGEN++; if(synth) synth.cancel();
   if(LIVE.url){ playLive(text,onDone); return }
   if(lineId&&packHas(lineId)){ playPack(lineId,onDone); return }
   speakSystem(text,onDone);
 }
+var SPEAKGEN=0;
 function speakSystem(text,onDone){
   if(!synth){ if(onDone)onDone(); return }
   if(!chosenVoice) pickVoice();
+  /* 每次發聲取一個世代編號；被中斷後舊的一輪不會再接著念下一句 */
+  var gen=++SPEAKGEN;
   var parts=splitSentences(text), i=0;
   function next(){
+    if(gen!==SPEAKGEN) return;
     if(i>=parts.length){ stopMouth(); if(onDone)onDone(); return }
     var idx=i, u=new SpeechSynthesisUtterance(parts[i++]);
     if(chosenVoice){u.voice=chosenVoice;u.lang=chosenVoice.lang}else{u.lang='zh-TW'}
@@ -1002,19 +1054,23 @@ function speakSystem(text,onDone){
     u.volume=1;
     u.onstart=function(){ startMouth() };
     u.onboundary=function(){ mouthOpen(3.8+Math.random()) };
-    u.onend=function(){ if(i<parts.length) setTimeout(next,150); else { stopMouth(); if(onDone)onDone() } };
-    u.onerror=function(){ if(i<parts.length) setTimeout(next,150); else { stopMouth(); if(onDone)onDone() } };
+    u.onend=function(){ if(gen!==SPEAKGEN) return; if(i<parts.length) setTimeout(next,150); else { stopMouth(); if(onDone)onDone() } };
+    u.onerror=function(e){
+      if(gen!==SPEAKGEN) return;
+      if(e&&(e.error==='interrupted'||e.error==='canceled')) return;
+      if(i<parts.length) setTimeout(next,150); else { stopMouth(); if(onDone)onDone() }
+    };
     synth.speak(u);
   }
   next();
 }
-function stopSpeak(){ stopPack(); LIVE.busy=false; if(synth) synth.cancel(); stopMouth(); }
+function stopSpeak(){ SPEAKGEN++; if(typeof QA!=='undefined'){ QA.token++; QA.pending=null; QA.qDone=true } stopPack(); LIVE.busy=false; if(synth) synth.cancel(); stopMouth(); }
 
 /* 語音控制列已隱藏；語音自動啟用並自動挑選 HsiaoChen。 */
 function testVoice(){
   if(!ttsOn) return;
   setState('speak');
-  speak('您好，我是 AI 侍酒師學習助理。今天想從哪個主題開始呢？',function(){setState('idle')},'sys_intro');
+  speak('您好，歡迎使用 AI侍酒師問答庫。今天想從哪個主題開始呢？',function(){setState('idle')},'sys_intro');
 }
 
 /* ---------- STT ---------- */
@@ -1055,23 +1111,83 @@ function addYou(t){
   d.innerHTML='<div class="lbl">你</div><div class="bub"></div>';
   d.querySelector('.bub').textContent=t; wrap.appendChild(d); scrollEnd();
 }
+/* ---- 關鍵字標示：找出提問中出現在段落裡的最長詞段 ---- */
+/* 只用多字的疑問詞切分；單字助詞（的、是…）只在詞首詞尾修剪，避免把「目的」這類詞切斷 */
+var KW_SPLIT=/請問|為什麼|怎麼樣|怎樣|怎麼|什麼|如何|哪一?[些個種]|可不可以|可以|是不是|要不要|應該|我想|我要|告訴我|幫我|一下|以及|還有|需要/g;
+var KW_EDGE=/^[的了和與跟及或]+|[了嗎呢吧喔啊呀嘛]+$/g;
+function htmlEsc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function reEsc(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}
+function keywordsFor(q,text){
+  var runs=String(q||'').replace(KW_SPLIT,' ').match(/[\u4e00-\u9fa5]+|[A-Za-z][A-Za-z'\-]+|\d+/g)||[];
+  var low=text.toLowerCase(), kws=[];
+  runs.forEach(function(r){
+    if(/^[A-Za-z\d]/.test(r)){ if(r.length>=3&&low.indexOf(r.toLowerCase())>=0) kws.push(r); return }
+    var i=0;
+    while(i<r.length-1){
+      var best=0;
+      for(var j=r.length;j>=i+2;j--){ if(text.indexOf(r.slice(i,j))>=0){ best=j; break } }
+      if(best){ kws.push(r.slice(i,best)); i=best } else i++;
+    }
+  });
+  var seen={}, out=[];
+  kws.forEach(function(k){
+    if(/^[\u4e00-\u9fa5]/.test(k)) k=k.replace(KW_EDGE,'');
+    if(k.length<2) return;
+    var key=k.toLowerCase(); if(!seen[key]){ seen[key]=1; out.push(k) }
+  });
+  return out.sort(function(a,b){return b.length-a.length});
+}
+function markText(text,q){
+  text=String(text||'').replace(/<\/?mark>/g,'');
+  var kws=keywordsFor(q,text);
+  if(!kws.length) return htmlEsc(text);
+  var re=new RegExp(kws.map(reEsc).join('|'),'gi'), out='', last=0, m;
+  while((m=re.exec(text))){
+    if(!m[0].length){ re.lastIndex++; continue }
+    out+=htmlEsc(text.slice(last,m.index))+'<mark>'+htmlEsc(m[0])+'</mark>';
+    last=m.index+m[0].length;
+  }
+  return out+htmlEsc(text.slice(last));
+}
+
+/* ---- 教材段落彈窗 ---- */
+var popEl=document.getElementById('pop'), popLast=null;
+function openSource(key){
+  var d=DOCS[key]; if(!d) return;
+  popLast=document.activeElement;
+  document.getElementById('popt').innerHTML='《'+htmlEsc(d.t)+'》<div class="pl">'+htmlEsc(d.loc||'')+'</div>';
+  document.getElementById('popb').innerHTML=markText(d.ex,d.q||'');
+  popEl.classList.add('on');
+  document.getElementById('popb').scrollTop=0;
+  var first=document.querySelector('#popb mark');
+  if(first) setTimeout(function(){ first.scrollIntoView({block:'center'}) },30);
+  setTimeout(function(){ document.getElementById('popx').focus() },40);
+}
+function closeSource(){ popEl.classList.remove('on'); if(popLast&&popLast.focus) try{popLast.focus()}catch(e){} }
+document.getElementById('popx').onclick=closeSource;
+popEl.onclick=function(e){ if(e.target===popEl) closeSource() };
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&popEl.classList.contains('on')) closeSource() });
+
 function renderSrc(ids){
-  if(!ids.length){ srclist.innerHTML='<p class="empty">這則回答沒有引用任何教材段落。<br><br>系統只允許引用本次實際檢索到的內容，因此不會出現無法查證的出處。</p>'; return }
+  if(!ids.length){ srclist.innerHTML='<p class="empty">這則回答沒有引用任何教材段落。</p>'; return }
   var h='';
   ids.forEach(function(id,i){var d=DOCS[id];
-    h+='<div class="srcitem" id="box-'+id+'"><span class="n">'+(i+1)+'</span><span class="t">《'+d.t+'》</span><div class="loc">'+d.loc+'</div><div class="ex">'+d.ex+'</div></div>';});
-  h+='<p class="demo-note">原型示範用的教材內容。實際系統中這些段落由老師上傳的檔案切段產生，頁碼由程式從資料庫取出，模型無法自行編造。</p>';
+    var ex=markText(d.ex,d.q||'');
+    h+='<button class="srcitem" id="box-'+id+'" data-s="'+id+'" style="display:block;width:100%;text-align:left;cursor:pointer">'+
+       '<span class="n">'+(i+1)+'</span><span class="t">《'+htmlEsc(d.t)+'》</span>'+
+       '<div class="loc">'+htmlEsc(d.loc||'')+'　點選查看段落</div>'+
+       '<div class="ex" style="max-height:7.6em;overflow:hidden">'+ex+'</div></button>';});
   srclist.innerHTML=h;
+  srclist.querySelectorAll('.srcitem').forEach(function(b){ b.onclick=function(){ openSource(b.dataset.s) } });
 }
 function bindCites(bub){
   bub.querySelectorAll('sup.cite').forEach(function(c){
+    c.setAttribute('role','button'); c.setAttribute('tabindex','0');
     c.onclick=function(){
       bub.querySelectorAll('sup.cite').forEach(function(x){x.classList.remove('on')}); c.classList.add('on');
-      var box=document.getElementById('box-'+c.dataset.s);
-      if(box){ document.querySelectorAll('.srcitem').forEach(function(b){b.classList.remove('on')}); box.classList.add('on');
-        box.scrollIntoView({block:'nearest',behavior:reduce?'auto':'smooth'});
-        if(window.innerWidth<=820) showTab('src'); }
+      openSource(c.dataset.s);
     };
+    c.onkeydown=function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); c.onclick() } };
   });
 }
 function escapeHtml(s){return s.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}
@@ -1079,26 +1195,44 @@ function escapeHtml(s){return s.replace(/[&<>]/g,function(c){return {'&':'&amp;'
 function answer(key){
   if(busy) return; busy=true; stopSpeak();
   var a=ANSWERS[key];
-  addYou(a.q); setState('think');
+  addYou(a.q); setState('think'); sayQuestion(a.q);
   var d=document.createElement('div'); d.className='msg ai';
-  d.innerHTML='<div class="lbl">AI 侍酒師學習助理</div><div class="bub"><span class="thinking">正在搜尋課程教材…</span></div>';
+  d.innerHTML='<div class="lbl">AI侍酒師問答庫</div><div class="bub"><span class="thinking">正在搜尋課程教材…</span></div>';
   wrap.appendChild(d); scrollEnd();
   var bub=d.querySelector('.bub');
   setTimeout(function(){
     bub.innerHTML='<span class="thinking">'+(a.src.length?('找到 '+a.src.length+' 個相關教材段落，正在整理答案…'):'檢索結果不足以支持回答，正在確認…')+'</span>';
     scrollEnd();
     setTimeout(function(){
-      setState('speak'); renderSrc(a.src);
+      renderSrc(a.src);
       var plain=stripHtml(a.html);
-      speak(plain,null,key);
+      sayAnswer(plain,function(){ setState('idle') });
+      if(!ttsOn||!synth) setState('idle');
       typeOut(bub,a,function(){
         if(a.flag){var f=document.createElement('div');f.className='flag';f.textContent='✓ '+a.flag;bub.appendChild(f)}
         bindCites(bub); busy=false; scrollEnd();
-        var w=setInterval(function(){ var busyA=(PACK.audio&&!PACK.audio.paused&&!PACK.audio.ended)||(synth&&synth.speaking);
-          if(!ttsOn||!busyA){clearInterval(w);setState('idle')} },300);
       });
     },reduce?0:650);
   },reduce?0:600);
+}
+/* 提問朗讀佇列：先念問題，念完才念答案 */
+var QA={qDone:true,pending:null,token:0};
+function sayQuestion(q){
+  QA.token++; var tk=QA.token;
+  QA.qDone=false; QA.pending=null;
+  if(!ttsOn||!synth){ QA.qDone=true; return }
+  setState('readq');
+  speak('你的問題是：'+q, function(){
+    if(tk!==QA.token) return;
+    QA.qDone=true;
+    if(QA.pending){ var f=QA.pending; QA.pending=null; f() }
+    else setState('think');
+  });
+}
+function sayAnswer(text,onEnd){
+  var tk=QA.token;
+  var go=function(){ if(tk!==QA.token) return; setState('speak'); speak(text,function(){ if(onEnd)onEnd() }) };
+  if(QA.qDone) go(); else QA.pending=go;
 }
 function stripHtml(h){var t=document.createElement('div');t.innerHTML=h;return t.textContent.replace(/\s+/g,' ').trim()}
 
@@ -1127,14 +1261,18 @@ function buildChips(){
   var h='<span class="cl">試試看</span>';
   CHIPS.forEach(function(c){h+='<button class="chip'+(c[2]?' edge':'')+'" data-k="'+c[0]+'">'+c[1]+'</button>'});
   chipbox.innerHTML=h;
-  chipbox.querySelectorAll('.chip').forEach(function(b){b.onclick=function(){answer(b.dataset.k)}});
+  chipbox.querySelectorAll('.chip').forEach(function(b){b.onclick=function(){
+    if(b.dataset.k==='quiz') answer('quiz');
+    else if(typeof liveAsk==='function') liveAsk(b.textContent);
+    else answer(b.dataset.k);
+  }});
 }
 function welcome(speakIt){
   stopSpeak(); wrap.innerHTML='';
-  var txt1='您好，我是這門課的 AI 侍酒師學習助理。你可以問我葡萄酒、餐酒搭配、酒標、侍酒流程與顧客服務的問題。';
+  var txt1='您好，歡迎使用 AI侍酒師問答庫。你可以問我葡萄酒、餐酒搭配、酒標、侍酒流程與顧客服務的問題。';
   var txt2='';
   var d=document.createElement('div');d.className='msg ai';
-  d.innerHTML='<div class="lbl">AI 侍酒師學習助理</div><div class="bub"><p>'+txt1+'</p><p>今天想從哪個主題開始？</p></div>';
+  d.innerHTML='<div class="lbl">AI侍酒師問答庫</div><div class="bub"><p>'+txt1+'</p><p>今天想從哪個主題開始？</p></div>';
   wrap.appendChild(d); renderSrc([]);
   if(speakIt&&ttsOn&&synth){ setState('speak'); speak(txt1+'今天想從哪個主題開始？',function(){setState('idle')},'sys_intro'); }
   else setState('idle');
@@ -1303,17 +1441,17 @@ var THRESHOLD=0.32;
 try{ var _t=parseFloat(localStorage.getItem('sommThreshold')); if(!isNaN(_t)) THRESHOLD=_t }catch(e){}
 
 /* --- 學生端：自由提問走真實檢索 --- */
-function liveAsk(){
+function liveAsk(qIn){
   var el=document.getElementById('ask');
-  var q=(el.value||'').trim();
+  var q=(typeof qIn==='string'?qIn:(el.value||'')).trim();
   if(!q||busy) return;
-  el.value='';
-  if(busy) return;
+  if(typeof qIn!=='string') el.value='';
   busy=true; stopSpeak();
   addYou(q); setState('think');
+  sayQuestion(q);
 
   var d=document.createElement('div'); d.className='msg ai';
-  d.innerHTML='<div class="lbl">AI 侍酒師學習助理</div><div class="bub"><span class="thinking">正在搜尋課程教材…</span></div>';
+  d.innerHTML='<div class="lbl">AI侍酒師問答庫</div><div class="bub"><span class="thinking">正在搜尋課程教材…</span></div>';
   wrap.appendChild(d); scrollEnd();
   var bub=d.querySelector('.bub');
 
@@ -1324,18 +1462,16 @@ function liveAsk(){
     scrollEnd();
 
     setTimeout(function(){
-      setState('speak');
       var a;
       if(good.length){
         var ids=[];
         var html='<p>依據教材，找到以下內容：</p>';
         good.slice(0,2).forEach(function(h,i){
-          var key='live'+i;
-          DOCS[key]={t:h.c.docName,loc:h.c.loc||'教師補充',ex:h.c.text};
+          var key='live'+Date.now()+'_'+i;
+          DOCS[key]={t:h.c.docName,loc:h.c.loc||'教師補充',ex:h.c.text,q:q};
           ids.push(key);
           html+='<p>'+esc(h.c.text)+'<sup class="cite" data-s="'+key+'">'+(i+1)+'</sup></p>';
         });
-        html+='<p class="thinking">原型直接呈現教材原文。實際系統會由模型依這些段落整理成自然的回答，引用範圍不變。</p>';
         a={q:q,src:ids,html:html};
       }else{
         a={q:q,src:[],flag:'已送交教師確認',
@@ -1346,14 +1482,11 @@ function liveAsk(){
         kbSave(); paintBadges();
       }
       renderSrc(a.src);
-      speak(stripHtml(a.html));
+      sayAnswer(stripHtml(a.html),function(){ setState('idle') });
+      if(!ttsOn||!synth) setState('idle');
       typeOut(bub,a,function(){
         if(a.flag){var f=document.createElement('div');f.className='flag';f.textContent='✓ '+a.flag;bub.appendChild(f)}
         bindCites(bub); busy=false; scrollEnd();
-        var w=setInterval(function(){
-          var b=(PACK.audio&&!PACK.audio.paused&&!PACK.audio.ended)||(synth&&synth.speaking);
-          if(!ttsOn||!b){clearInterval(w);setState('idle')}
-        },300);
       });
     },520);
   },480);
