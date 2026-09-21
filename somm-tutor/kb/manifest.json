@@ -1,6 +1,128 @@
 {
-  "files": [
-    { "file": "service.md", "name": "侍酒服務流程講義" },
-    { "file": "pairing.md", "name": "餐酒搭配原則" }
-  ]
+ "files": [
+  {
+   "file": "1-8葡萄酒產區（舊世界）.md",
+   "name": "1-8葡萄酒產區（舊世界）"
+  },
+  {
+   "file": "2-4餐酒搭配.md",
+   "name": "2-4餐酒搭配"
+  },
+  {
+   "file": "2021侍酒師與葡萄品種.md",
+   "name": "2021侍酒師與葡萄品種"
+  },
+  {
+   "file": "2024-CMS-A-Advanced-and-Master-Sommelier-Deductive-Tasting-Format (1).md",
+   "name": "2024-CMS-A-Advanced-and-Master-Sommelier-Deductive-Tasting-Format (1)"
+  },
+  {
+   "file": "AI 敘事範例.md",
+   "name": "AI 敘事範例"
+  },
+  {
+   "file": "Food and Wine Pairing Basics (Start Here!) _ Wine Folly.md",
+   "name": "Food and Wine Pairing Basics (Start Here!) _ Wine Folly"
+  },
+  {
+   "file": "Food-and-Wine-1.md",
+   "name": "Food-and-Wine-1"
+  },
+  {
+   "file": "Herdenstam language wine.md",
+   "name": "Herdenstam language wine"
+  },
+  {
+   "file": "Irene - 葡萄酒產區 新世界.md",
+   "name": "Irene - 葡萄酒產區 新世界"
+  },
+  {
+   "file": "Taiwanese_Food_Wine_Pairings.md",
+   "name": "Taiwanese_Food_Wine_Pairings"
+  },
+  {
+   "file": "Taiwanese_Food_Wine_Pairings_(2).md",
+   "name": "Taiwanese_Food_Wine_Pairings_(2)"
+  },
+  {
+   "file": "Types of Wine _ Wine & Cheese Pairings _ Ain_t Too Proud To Meg.md",
+   "name": "Types of Wine _ Wine & Cheese Pairings _ Ain_t Too Proud To Meg"
+  },
+  {
+   "file": "Wine Pairing Guide 2025_ What Top Sommeliers Recommend.md",
+   "name": "Wine Pairing Guide 2025_ What Top Sommeliers Recommend"
+  },
+  {
+   "file": "Wine Pairing Tips For Beginners & Wine Pairing Chart.md",
+   "name": "Wine Pairing Tips For Beginners & Wine Pairing Chart"
+  },
+  {
+   "file": "Wine Tasting Supplementary Note.md",
+   "name": "Wine Tasting Supplementary Note"
+  },
+  {
+   "file": "Wine tasting-2.md",
+   "name": "Wine tasting-2"
+  },
+  {
+   "file": "wine tasting.md",
+   "name": "wine tasting"
+  },
+  {
+   "file": "侍酒師在做什麼？第一線桌邊服務，為餐酒和客人打造一座橋樑 - alive - 商業名人的生活美學.md",
+   "name": "侍酒師在做什麼？第一線桌邊服務，為餐酒和客人打造一座橋樑 - alive - 商業名人的生活美學"
+  },
+  {
+   "file": "侍酒師的台味餐酒指南.md",
+   "name": "侍酒師的台味餐酒指南"
+  },
+  {
+   "file": "侍酒師的服務範疇.md",
+   "name": "侍酒師的服務範疇"
+  },
+  {
+   "file": "快狠準！精準形容葡萄酒香氣的秘訣.md",
+   "name": "快狠準！精準形容葡萄酒香氣的秘訣"
+  },
+  {
+   "file": "葡萄酒應用.md",
+   "name": "葡萄酒應用"
+  },
+  {
+   "file": "葡萄酒餐酒搭配敘事.md",
+   "name": "葡萄酒餐酒搭配敘事"
+  },
+  {
+   "file": "酒與食物的搭配.md",
+   "name": "酒與食物的搭配"
+  },
+  {
+   "file": "酒香氣.md",
+   "name": "酒香氣"
+  },
+  {
+   "file": "附錄3靜態酒SOP.md",
+   "name": "附錄3靜態酒SOP"
+  },
+  {
+   "file": "附錄4香檳氣泡酒SOP.md",
+   "name": "附錄4香檳氣泡酒SOP"
+  },
+  {
+   "file": "靜態酒侍酒服務流程.md",
+   "name": "靜態酒侍酒服務流程"
+  },
+  {
+   "file": "餐酒搭配敘事.md",
+   "name": "餐酒搭配敘事"
+  },
+  {
+   "file": "餐酒搭配連結.md",
+   "name": "餐酒搭配連結"
+  },
+  {
+   "file": "餐酒服務互動情境.md",
+   "name": "餐酒服務互動情境"
+  }
+ ]
 }
