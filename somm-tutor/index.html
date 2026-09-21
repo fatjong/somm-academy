@@ -200,6 +200,10 @@ sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
 .gate-act .no{background:var(--surface-2);color:var(--ink-soft);border:1px solid var(--rule)}
 .themetog{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));right:16px;z-index:8;background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:4px 13px;font-size:12px;color:var(--ink-soft)}
 .themetog:hover,.themetog-in:hover{border-color:var(--wine);color:var(--wine)}
+a.reflink{color:var(--wine);text-decoration:underline;text-underline-offset:2px;white-space:nowrap;font-weight:500}
+a.reflink:hover{filter:brightness(1.2)}
+.msg.you a.reflink{color:inherit}
+span.reflink{color:var(--ink-faint);white-space:nowrap}
 /* 教材段落彈窗 */
 .pop{position:fixed;inset:0;background:rgba(12,9,15,.66);display:none;align-items:center;justify-content:center;z-index:70;padding:20px}
 .pop.on{display:flex}
@@ -1150,13 +1154,60 @@ function markText(text,q){
   return out+htmlEsc(text.slice(last));
 }
 
+/* ---- 輸出清理：移除 *、/*、\* 等符號 ---- */
+function cleanOut(t){
+  return String(t||'')
+    .replace(/\\\*/g,'')
+    .replace(/\/\*|\*\//g,'')
+    .replace(/\*/g,'')
+    .replace(/[ \t]+\n/g,'\n')
+    .replace(/\n{3,}/g,'\n\n')
+    .trim();
+}
+/* 顯示用教材名稱：去掉副檔名 */
+function docTitle(n){ return String(n||'').replace(/\.(md|markdown|txt|csv|json|docx?|pptx?|pdf|xlsx?)$/i,'').trim() }
+
+/* ---- 網址轉成 <鏈接N> 超連結 ----
+   先把網址換成內部記號，算字數時記號只算「<鏈接1>」的長度，最後才渲染成連結。 */
+var URL_RE=/https?:\/\/[^\s<>()\[\]{}"'，。；、！？「」『』（）]+/g;
+function linkify(t,links){
+  t=String(t||'').replace(/\[([^\]\n]{1,80})\]\((https?:\/\/[^)\s]+)\)/g,function(_,txt,u){
+    links.push(u); return txt+'\u0001'+String.fromCharCode(0xE000+links.length-1)+'\u0002';
+  });
+  return t.replace(URL_RE,function(m){
+    var tail=(m.match(/[.,;:!?]+$/)||[''])[0], u=m.slice(0,m.length-tail.length);
+    links.push(u); return '\u0001'+String.fromCharCode(0xE000+links.length-1)+'\u0002'+tail;
+  });
+}
+function renderLinks(html,links,nolink){
+  var order={}, n=0;
+  return String(html).replace(/\u0001([\uE000-\uF8FF])\u0002/g,function(_,ch){
+    var u=links[ch.charCodeAt(0)-0xE000]; if(!u) return '';
+    if(!order[u]) order[u]=++n;
+    var label='&lt;鏈接'+order[u]+'&gt;';
+    if(nolink) return '<span class="reflink">'+label+'</span>';
+    return '<a class="reflink" href="'+htmlEsc(u)+'" target="_blank" rel="noopener noreferrer">'+label+'</a>';
+  });
+}
+function vlen(s){ return String(s).replace(/\u0001[\uE000-\uF8FF]\u0002/g,'<鏈接1>').length }
+function richText(text,q,nolink){
+  var links=[], t=linkify(cleanOut(text),links);
+  return renderLinks(markText(t,q),links,nolink);
+}
+/* 朗讀用文字：去掉引用編號與連結標籤 */
+function speechText(html){
+  var t=document.createElement('div'); t.innerHTML=html;
+  t.querySelectorAll('sup,.reflink').forEach(function(n){ n.parentNode.removeChild(n) });
+  return t.textContent.replace(/\s+/g,' ').trim();
+}
+
 /* ---- 教材段落彈窗 ---- */
 var popEl=document.getElementById('pop'), popLast=null;
 function openSource(key){
   var d=DOCS[key]; if(!d) return;
   popLast=document.activeElement;
-  document.getElementById('popt').innerHTML='《'+htmlEsc(d.t)+'》<div class="pl">'+htmlEsc(d.loc||'')+'</div>';
-  document.getElementById('popb').innerHTML=markText(d.ex,d.q||'');
+  document.getElementById('popt').innerHTML='《'+htmlEsc(docTitle(d.t))+'》<div class="pl">'+htmlEsc(d.loc||'')+'</div>';
+  document.getElementById('popb').innerHTML=richText(d.ex,d.q||'');
   popEl.classList.add('on');
   document.getElementById('popb').scrollTop=0;
   var first=document.querySelector('#popb mark');
@@ -1172,9 +1223,9 @@ function renderSrc(ids){
   if(!ids.length){ srclist.innerHTML='<p class="empty">這則回答沒有引用任何教材段落。</p>'; return }
   var h='';
   ids.forEach(function(id,i){var d=DOCS[id];
-    var ex=markText(d.ex,d.q||'');
+    var ex=richText(d.ex,d.q||'',true);
     h+='<button class="srcitem" id="box-'+id+'" data-s="'+id+'" style="display:block;width:100%;text-align:left;cursor:pointer">'+
-       '<span class="n">'+(i+1)+'</span><span class="t">《'+htmlEsc(d.t)+'》</span>'+
+       '<span class="n">'+(i+1)+'</span><span class="t">《'+htmlEsc(docTitle(d.t))+'》</span>'+
        '<div class="loc">'+htmlEsc(d.loc||'')+'　點選查看段落</div>'+
        '<div class="ex" style="max-height:7.6em;overflow:hidden">'+ex+'</div></button>';});
   srclist.innerHTML=h;
@@ -1205,7 +1256,7 @@ function answer(key){
     scrollEnd();
     setTimeout(function(){
       renderSrc(a.src);
-      var plain=stripHtml(a.html);
+      var plain=cleanOut(speechText(a.html));
       sayAnswer(plain,function(){ setState('idle') });
       if(!ttsOn||!synth) setState('idle');
       typeOut(bub,a,function(){
@@ -1440,6 +1491,107 @@ function kbInvalidate(){ IDX.built=false }
 var THRESHOLD=0.32;
 try{ var _t=parseFloat(localStorage.getItem('sommThreshold')); if(!isNaN(_t)) THRESHOLD=_t }catch(e){}
 
+/* ---- 組答案：總長不超過 300 字 ----
+   純前端沒有語言模型，所以「總結」是抽取式的：
+   從命中的段落裡挑出與提問最相關的句子，依原本順序組合，直到接近字數上限。 */
+var ANSWER_MAX=300;
+function splitSent(t){
+  var s=String(t).replace(/([.!?])\s+(?=[A-Z0-9"'(])/g,'$1\n');
+  var out=s.match(/[^。！？；!?\n]+[。！？；!?]*/g)||[];
+  return out.map(function(x){return x.trim()}).filter(function(x){return x.length>0});
+}
+function sentScore(q,s){
+  var ql=gramList(normQ(q)); if(!ql.length) return 0;
+  var ns=norm(s), tot=0, hit=0, seen={};
+  for(var i=0;i<ql.length;i++){
+    var g=ql[i]; if(seen[g]) continue; seen[g]=1;
+    var w=IDX.idf[g]||1; tot+=w; if(ns.indexOf(g)>=0) hit+=w;
+  }
+  return tot?hit/tot:0;
+}
+function joinSent(arr){
+  var out='';
+  arr.forEach(function(s){
+    if(out&&/[A-Za-z0-9)\u0002]$/.test(out)&&/^[A-Za-z0-9(]/.test(s)) out+=' ';
+    out+=s;
+  });
+  return out;
+}
+function cutTo(s,n){
+  if(vlen(s)<=n) return s;
+  var out='', i=0;
+  while(i<s.length){
+    var piece=(s[i]==='\u0001')?s.substr(i,3):s[i];
+    if(vlen(out+piece)>n-1) break;
+    out+=piece; i+=piece.length;
+  }
+  return out+'…';
+}
+function buildAnswer(q,hits){
+  if(!IDX.built) buildIndex();
+  var links=[], intro='依據教材，找到以下內容：';
+  var budget=ANSWER_MAX-intro.length;
+  var chunks=hits.map(function(h,ci){ return {h:h,ci:ci,text:linkify(cleanOut(h.c.text),links)} })
+                 .filter(function(c){ return c.text.replace(/\s/g,'').length });
+  if(!chunks.length) return null;
+  var paras=[];
+  var two=chunks.slice(0,2);
+  var whole=two.reduce(function(a,c){return a+vlen(c.text)},0);
+  if(whole<=budget){
+    paras=two.map(function(c){return {ci:c.ci,text:c.text}});
+  }else{
+    /* 只挑真的含有提問關鍵詞的句子；不拿無關句子湊字數，重複的句子只留一次 */
+    var sents=[], seenS={};
+    chunks.forEach(function(c,rank){
+      splitSent(c.text).forEach(function(s,si){
+        var key=norm(s); if(!key||seenS[key]) return; seenS[key]=1;
+        var rel=sentScore(q,s);
+        sents.push({ci:c.ci,si:si,s:s,len:vlen(s),rel:rel,
+          score:rel+(rank===0?0.02:0)+(si===0?0.01:0)});
+      });
+    });
+    var ranked=sents.filter(function(x){return x.rel>0&&x.len>=4})
+                    .sort(function(a,b){return b.score-a.score});
+    var used=0, chosen=[];
+    for(var i=0;i<ranked.length;i++){
+      var x=ranked[i];
+      if(used+x.len<=budget){ chosen.push(x); used+=x.len }
+      if(used>=budget-8) break;
+    }
+    /* 挑出來的內容太少時，補上最相關段落的開頭幾句當背景 */
+    if(used<60){
+      var lead=sents.filter(function(x){return x.ci===chunks[0].ci&&x.len>=4})
+                    .sort(function(a,b){return a.si-b.si});
+      for(var j=0;j<lead.length&&used<120;j++){
+        var y=lead[j];
+        if(chosen.indexOf(y)<0&&used+y.len<=budget){ chosen.push(y); used+=y.len }
+      }
+    }
+    if(!chosen.length&&sents.length){
+      var b=sents[0]; chosen=[{ci:b.ci,si:b.si,s:cutTo(b.s,budget)}];
+    }
+    chosen.sort(function(a,b){return a.ci-b.ci||a.si-b.si});
+    chosen.forEach(function(x){
+      var last=paras[paras.length-1];
+      if(last&&last.ci===x.ci) last.parts.push(x.s);
+      else paras.push({ci:x.ci,parts:[x.s]});
+    });
+    paras.forEach(function(p){ p.text=joinSent(p.parts) });
+  }
+  if(!paras.length) return null;
+  var ids=[], html='<p>'+intro+'</p>', stamp=Date.now(), plainLen=intro.length;
+  paras.forEach(function(p,i){
+    var c=chunks.filter(function(k){return k.ci===p.ci})[0];
+    var key='live'+stamp+'_'+p.ci;
+    DOCS[key]={t:docTitle(c.h.c.docName),loc:c.h.c.loc||'教師補充',ex:c.h.c.text,q:q};
+    ids.push(key);
+    plainLen+=vlen(p.text);
+    html+='<p>'+htmlEsc(p.text)+'<sup class="cite" data-s="'+key+'">'+(i+1)+'</sup></p>';
+  });
+  html=renderLinks(html,links,false);
+  return {html:html,ids:ids,len:plainLen};
+}
+
 /* --- 學生端：自由提問走真實檢索 --- */
 function liveAsk(qIn){
   var el=document.getElementById('ask');
@@ -1463,16 +1615,9 @@ function liveAsk(qIn){
 
     setTimeout(function(){
       var a;
-      if(good.length){
-        var ids=[];
-        var html='<p>依據教材，找到以下內容：</p>';
-        good.slice(0,2).forEach(function(h,i){
-          var key='live'+Date.now()+'_'+i;
-          DOCS[key]={t:h.c.docName,loc:h.c.loc||'教師補充',ex:h.c.text,q:q};
-          ids.push(key);
-          html+='<p>'+esc(h.c.text)+'<sup class="cite" data-s="'+key+'">'+(i+1)+'</sup></p>';
-        });
-        a={q:q,src:ids,html:html};
+      var built=good.length?buildAnswer(q,good.slice(0,3)):null;
+      if(built){
+        a={q:q,src:built.ids,html:built.html};
       }else{
         a={q:q,src:[],flag:'已送交教師確認',
            html:'<p>目前老師提供的課程教材中，我沒有找到足夠資料可以確定回答這個問題，所以不想直接猜。</p>'+
@@ -1482,7 +1627,7 @@ function liveAsk(qIn){
         kbSave(); paintBadges();
       }
       renderSrc(a.src);
-      sayAnswer(stripHtml(a.html),function(){ setState('idle') });
+      sayAnswer(cleanOut(speechText(a.html)),function(){ setState('idle') });
       if(!ttsOn||!synth) setState('idle');
       typeOut(bub,a,function(){
         if(a.flag){var f=document.createElement('div');f.className='flag';f.textContent='✓ '+a.flag;bub.appendChild(f)}
@@ -1637,9 +1782,9 @@ document.getElementById('pasteadd').onclick=function(){
          '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">'+
          '<b style="font-weight:500;color:'+col+';font-size:15px">'+x.score.toFixed(3)+'</b>'+
          '<span style="font-size:11.5px;color:'+col+'">'+(pass?'會採用':'低於門檻')+'</span>'+
-         '<span class="dn" style="flex:1">《'+esc(x.c.docName)+'》<span class="dm">'+esc(x.c.loc||'')+'</span></span></div>'+
+         '<span class="dn" style="flex:1">《'+esc(docTitle(x.c.docName))+'》<span class="dm">'+esc(x.c.loc||'')+'</span></span></div>'+
          '<div style="font-size:12.5px;line-height:1.8;color:var(--ink-soft);margin-top:7px">'+
-         esc(x.c.text.slice(0,170))+(x.c.text.length>170?'…':'')+'</div></div>';
+         esc(cleanOut(x.c.text).slice(0,170))+(cleanOut(x.c.text).length>170?'…':'')+'</div></div>';
     });
     box.innerHTML=h;
   }
