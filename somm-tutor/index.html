@@ -2093,9 +2093,44 @@ function ghDiscover(cb){
   });
 }
 
+/* ---- GitHub 原始檔備援 ----
+   GitHub Pages 預設用 Jekyll 處理網站，帶有 YAML 檔頭（--- id: ... ---）的 .md
+   會被轉成 .html，原本的 .md 網址變成 404。
+   Pages 讀不到時，改從 raw.githubusercontent.com 直接讀 repo 裡的原始檔。 */
+var RAW_BRANCH=null, RAW_USED=0;
+function rawBase(){
+  var host=location.hostname;
+  if(!/\.github\.io$/i.test(host)) return null;
+  var owner=host.replace(/\.github\.io$/i,'');
+  var parts=location.pathname.split('/').filter(Boolean).filter(function(p){return !/\.html?$/i.test(p)});
+  var repo, sub;
+  if(!parts.length){ repo=host; sub='' } else { repo=parts[0]; sub=parts.slice(1).join('/') }
+  return {owner:owner,repo:repo,prefix:(sub?sub+'/':'')+'kb/'};
+}
+function rawUrl(branch,file){
+  var b=rawBase();
+  return 'https://raw.githubusercontent.com/'+b.owner+'/'+b.repo+'/'+branch+'/'+
+         (b.prefix+file).split('/').map(encodeURIComponent).join('/');
+}
+function getKbFile(file,cb){
+  xget('kb/'+encodeURIComponent(file),15000,function(st,tx){
+    if((st===200||(st===0&&tx))&&!looksHtml(tx)){ cb(st,tx,'pages'); return }
+    if(!rawBase()){ cb(st,tx,'pages'); return }
+    var branches=RAW_BRANCH?[RAW_BRANCH]:['main','master'], i=0;
+    (function next(){
+      if(i>=branches.length){ cb(st,tx,'pages'); return }
+      var br=branches[i++];
+      xget(rawUrl(br,file),15000,function(s2,t2){
+        if(s2===200&&t2&&!looksHtml(t2)){ RAW_BRANCH=br; RAW_USED++; cb(200,t2,'raw') }
+        else next();
+      });
+    })();
+  });
+}
+
 var KBRUN=0;
 function kbLoadMarkdown(done){
-  var run=++KBRUN;                                  /* 重新載入時，舊的一輪結果一律丟棄 */
+  var run=++KBRUN; RAW_USED=0;                                  /* 重新載入時，舊的一輪結果一律丟棄 */
   var requested={}, fileState={}, notes=[], ops=2, added=0, failed=0;
   KBLOAD={state:'loading',msg:'正在讀取教材清單…',detail:[]};
   /* 先清掉上一次從 kb/ 載入的教材，避免重複 */
@@ -2107,6 +2142,8 @@ function kbLoadMarkdown(done){
     docs.forEach(function(d){ ch+=d.chunks.length });
     KBLOAD.detail=notes.concat(Object.keys(fileState).sort().map(function(f){return fileState[f]}));
     kbSave();
+    if(RAW_USED) notes.push(RAW_USED+' 份由 GitHub 原始檔讀取。在 repo 根目錄加一個 .nojekyll 空檔可讓網站直接提供，速度較快');
+    KBLOAD.detail=notes.concat(Object.keys(fileState).sort().map(function(f){return fileState[f]}));
     if(docs.length) kbStatus('ok','已從線上 kb/ 載入 '+docs.length+' 份教材，共 '+ch+' 個片段。'+(failed?'（'+failed+' 份失敗）':''));
     else kbStatus('err','沒有載入任何教材。'+notes.join('；'));
     if(typeof paintBadges==='function') paintBadges();
@@ -2127,7 +2164,7 @@ function kbLoadMarkdown(done){
     if(!todo.length){ cb(); return }
     var left=todo.length;
     todo.forEach(function(item){
-      xget('kb/'+encodeURIComponent(item.file),15000,function(status,text){
+      getKbFile(item.file,function(status,text,via){
         if(run!==KBRUN) return;
         if((status===200||(status===0&&text))&&!looksHtml(text)){
           var chs=mdChunks(text);
@@ -2135,7 +2172,7 @@ function kbLoadMarkdown(done){
             var id='md-'+item.file;
             KB.docs=KB.docs.filter(function(d){ return d.id!==id });
             KB.docs.push({id:id,name:item.name||item.file,md:true,active:true,at:Date.now(),chunks:chs});
-            added++; fileState[item.file]='✓ '+item.file+'　'+chs.length+' 個片段';
+            added++; fileState[item.file]='✓ '+item.file+'　'+chs.length+' 個片段'+(via==='raw'?'（由 GitHub 原始檔讀取）':'');
             kbInvalidate();
           }else{ failed++; fileState[item.file]='✗ '+item.file+'　內容是空的' }
         }else{
