@@ -204,6 +204,37 @@ a.reflink{color:var(--wine);text-decoration:underline;text-underline-offset:2px;
 a.reflink:hover{filter:brightness(1.2)}
 .msg.you a.reflink{color:inherit}
 span.reflink{color:var(--ink-faint);white-space:nowrap}
+/* 測驗 */
+.quiz{position:fixed;inset:0;background:rgba(12,9,15,.72);display:none;align-items:center;justify-content:center;z-index:75;padding:16px}
+.quiz.on{display:flex}
+.quiz-box{background:var(--surface);border:1px solid var(--rule);border-radius:5px;width:100%;max-width:560px;max-height:min(88vh,88dvh);display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.quiz-head{padding:14px 18px;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;font-family:var(--serif);font-size:16px;font-weight:600}
+.quiz-body{padding:18px;overflow-y:auto}
+.qz-load{font-size:13.5px;color:var(--ink-faint);text-align:center;padding:30px 10px;line-height:1.9}
+.qz-top{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--ink-faint);gap:8px}
+.qz-lv{border:1px solid var(--gold-rule);color:var(--gold);border-radius:999px;padding:1px 9px}
+.qz-bar{height:3px;background:var(--rule);border-radius:2px;margin:9px 0 16px;overflow:hidden}
+.qz-bar i{display:block;height:100%;background:var(--wine);transition:width .3s}
+.qz-q{font-size:15.5px;line-height:1.9;margin-bottom:14px}
+.qz-opts{display:flex;flex-direction:column;gap:8px}
+.qz-opt{text-align:left;padding:11px 14px;border:1px solid var(--rule);background:var(--surface-2);border-radius:3px;font-size:14px;line-height:1.6}
+.qz-opt:hover:enabled{border-color:var(--wine);color:var(--wine)}
+.qz-opt:disabled{cursor:default}
+.qz-opt.ok{border-color:var(--wine);background:var(--wine-tint);color:var(--wine);font-weight:500}
+.qz-opt.no{border-color:#B3403F;color:#B3403F}
+.qz-fb{margin-top:14px}
+.qz-verdict{font-size:14.5px;font-weight:500;margin-bottom:8px}
+.qz-verdict.ok{color:var(--wine)} .qz-verdict.no{color:#B3403F}
+.qz-exp{font-size:13.5px;line-height:1.9;color:var(--ink-soft);background:var(--surface-2);border-left:2px solid var(--gold);padding:11px 13px;border-radius:3px}
+.qz-src{font-size:12px;color:var(--ink-faint);margin:7px 0 12px}
+.qz-done{text-align:center;padding:10px 0}
+.qz-score{font-family:var(--serif);font-size:42px;font-weight:600;color:var(--wine);line-height:1.2}
+.qz-msg{font-size:14.5px;margin:6px 0 4px}
+.qz-cats{font-size:12.5px;color:var(--ink-faint);margin-bottom:16px}
+.qz-wronglist{text-align:left;border-top:1px solid var(--rule);padding-top:12px;margin-bottom:14px;font-size:13px}
+.qz-wrong{margin-top:9px;line-height:1.8}
+.qz-wrong span{font-size:12px;color:var(--ink-faint)}
+.qz-act{display:flex;gap:8px;justify-content:center}
 /* 教材段落彈窗 */
 .pop{position:fixed;inset:0;background:rgba(12,9,15,.66);display:none;align-items:center;justify-content:center;z-index:70;padding:20px}
 .pop.on{display:flex}
@@ -273,9 +304,8 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
 </head>
 <body>
 
-<button class="themetog" id="themeLogin" aria-label="切換色系">淺色</button>
-
 <section class="login" id="login">
+  <button class="themetog" id="themeLogin" aria-label="切換色系">淺色</button>
   <div class="login-main">
     <div class="login-fig"><svg  viewBox="0 0 120 138" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <g id="body">
@@ -384,6 +414,13 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
   </div>
 </div>
 
+<div class="quiz" id="quiz" role="dialog" aria-modal="true">
+  <div class="quiz-box">
+    <div class="quiz-head"><span>課程測驗</span><button class="pop-x" id="quizx">關閉</button></div>
+    <div class="quiz-body" id="quizbody"></div>
+  </div>
+</div>
+
 <div class="pop" id="pop" role="dialog" aria-modal="true" aria-labelledby="popt">
   <div class="pop-box">
     <div class="pop-head">
@@ -406,6 +443,7 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
       <button class="t-tab on" data-t="gaps">待回答問題 <b id="gapcount">0</b></button>
       <button class="t-tab" data-t="docs">教材管理 <b id="doccount">0</b></button>
       <button class="t-tab" data-t="test">檢索測試</button>
+      <button class="t-tab" data-t="rec">學習紀錄</button>
     </div>
     <button class="chip themetog-in" aria-label="切換色系">淺色</button>
     <button class="chip" id="t-back">回學生介面</button>
@@ -415,6 +453,11 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
     <section class="t-pane on" id="pane-gaps">
       <p class="t-hint">學生問到教材裡沒有的內容時，系統會記錄在這裡。你可以直接寫答案，或到「教材管理」上傳補充資料。選擇「加入知識庫」後，之後其他學生問類似問題就能得到答案，來源會標示為教師補充。</p>
       <div id="gaplist"></div>
+    </section>
+
+    <section class="t-pane" id="pane-rec">
+      <p class="t-hint">這裡只看得到<b>這台裝置</b>的測驗紀錄。學生在自己的手機或電腦作答，成績留在他們的瀏覽器，老師這邊讀不到。要集中管理全班成績需要後端。</p>
+      <div id="reclist"></div>
     </section>
 
     <section class="t-pane" id="pane-test">
@@ -1321,7 +1364,7 @@ function buildChips(){
   CHIPS.forEach(function(c){h+='<button class="chip'+(c[2]?' edge':'')+'" data-k="'+c[0]+'">'+c[1]+'</button>'});
   chipbox.innerHTML=h;
   chipbox.querySelectorAll('.chip').forEach(function(b){b.onclick=function(){
-    if(b.dataset.k==='quiz') answer('quiz');
+    if(b.dataset.k==='quiz'){ if(typeof startQuiz==='function') startQuiz(); }
     else if(typeof liveAsk==='function') liveAsk(b.textContent);
     else answer(b.dataset.k);
   }});
@@ -1354,6 +1397,7 @@ function showTab(which){
   if(tabs.length){tabs[0].classList.toggle('on',which!=='src');tabs[1].classList.toggle('on',which==='src')}
 }
 document.getElementById('signin').onclick=function(){
+  try{ localStorage.setItem('sommUser',(document.getElementById('em').value||'').trim()||'guest') }catch(e){}
   login.style.display='none'; app.classList.add('on'); initFig(); pickVoice();
   if(!document.querySelector('.mobtabs')){
     var t=document.createElement('div');t.className='mobtabs';
@@ -1956,6 +2000,7 @@ document.querySelectorAll('.t-tab').forEach(function(b){
     document.querySelectorAll('.t-pane').forEach(function(x){x.classList.remove('on')});
     b.classList.add('on');
     document.getElementById('pane-'+b.dataset.t).classList.add('on');
+    if(b.dataset.t==='rec'&&typeof paintRecords==='function') paintRecords();
   };
 });
 function openTeacher(){
@@ -2272,6 +2317,183 @@ document.getElementById('gatepw').onkeydown=function(e){ if(e.key==='Enter') try
 gateEl.onclick=function(e){ if(e.target===gateEl) closeGate() };
 document.getElementById('t-enter').onclick=function(){ openGate(); return false };
 
+
+</script>
+<script>
+/* ==================================================================
+   測驗：從 kb/quiz.json 隨機出 10 題，由淺入深，每題作答後立即公布答案
+   成績存在這台裝置的瀏覽器，依登入帳號分開記錄
+   ================================================================== */
+var QUIZ={bank:null,loading:false,items:[],idx:0,score:0,log:[],open:false};
+function currentUser(){
+  try{ return localStorage.getItem('sommUser')||'guest' }catch(e){ return 'guest' }
+}
+function quizKey(){ return 'sommQuiz_'+currentUser() }
+function quizHistory(){
+  try{ return JSON.parse(localStorage.getItem(quizKey())||'[]') }catch(e){ return [] }
+}
+function quizSave(rec){
+  var h=quizHistory(); h.unshift(rec); h=h.slice(0,50);
+  try{ localStorage.setItem(quizKey(),JSON.stringify(h)) }catch(e){}
+  try{
+    var us=JSON.parse(localStorage.getItem('sommUsers')||'[]');
+    if(us.indexOf(currentUser())<0){ us.push(currentUser()); localStorage.setItem('sommUsers',JSON.stringify(us)) }
+  }catch(e){}
+}
+function loadBank(cb){
+  if(QUIZ.bank){ cb(QUIZ.bank); return }
+  if(QUIZ.loading){ setTimeout(function(){ loadBank(cb) },300); return }
+  QUIZ.loading=true;
+  getKbFile('quiz.json',function(st,tx){
+    QUIZ.loading=false;
+    var j=null;
+    try{ j=JSON.parse(tx) }catch(e){}
+    QUIZ.bank=(j&&j.items&&j.items.length)?j.items:null;
+    cb(QUIZ.bank);
+  });
+}
+/* 由淺入深：4 題基礎、4 題進階、2 題挑戰；最近做過的題目盡量不重複 */
+function pickQuestions(bank){
+  var recent=[];
+  try{ recent=JSON.parse(localStorage.getItem(quizKey()+'_recent')||'[]') }catch(e){}
+  var fresh=function(a){ return a.filter(function(q){ return recent.indexOf(q.id)<0 }) };
+  var out=[];
+  [[1,4],[2,4],[3,2]].forEach(function(p){
+    var pool=bank.filter(function(q){ return q.l===p[0] });
+    var f=fresh(pool); if(f.length<p[1]) f=pool;
+    for(var i=f.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=f[i]; f[i]=f[j]; f[j]=t }
+    out=out.concat(f.slice(0,p[1]));
+  });
+  while(out.length<10){
+    var extra=bank[Math.floor(Math.random()*bank.length)];
+    if(out.indexOf(extra)<0) out.push(extra);
+  }
+  out=out.slice(0,10).sort(function(a,b){ return a.l-b.l });
+  try{
+    var keep=out.map(function(q){return q.id}).concat(recent).slice(0,120);
+    localStorage.setItem(quizKey()+'_recent',JSON.stringify(keep));
+  }catch(e){}
+  return out;
+}
+function startQuiz(){
+  stopSpeak();
+  var box=document.getElementById('quizbody');
+  document.getElementById('quiz').classList.add('on');
+  QUIZ.open=true;
+  box.innerHTML='<p class="qz-load">正在準備題目…</p>';
+  loadBank(function(bank){
+    if(!bank){
+      box.innerHTML='<p class="qz-load">找不到題庫檔 kb/quiz.json。<br>請確認它和教材放在同一個 kb/ 資料夾裡。</p>';
+      return;
+    }
+    QUIZ.items=pickQuestions(bank); QUIZ.idx=0; QUIZ.score=0; QUIZ.log=[];
+    renderQ();
+  });
+}
+function closeQuiz(){ document.getElementById('quiz').classList.remove('on'); QUIZ.open=false }
+function renderQ(){
+  var q=QUIZ.items[QUIZ.idx], box=document.getElementById('quizbody');
+  var lvl=['','基礎','進階','挑戰'][q.l]||'';
+  var h='<div class="qz-top"><span class="qz-no">第 '+(QUIZ.idx+1)+' 題 / 10</span>'+
+        '<span class="qz-lv">'+lvl+'</span><span class="qz-sc">目前 '+QUIZ.score+' 分</span></div>'+
+        '<div class="qz-bar"><i style="width:'+(QUIZ.idx*10)+'%"></i></div>'+
+        '<div class="qz-q">'+htmlEsc(cleanOut(q.q))+'</div><div class="qz-opts">';
+  q.o.forEach(function(o,i){ h+='<button class="qz-opt" data-i="'+i+'">'+htmlEsc(o)+'</button>' });
+  h+='</div><div class="qz-fb" id="qzfb"></div>';
+  box.innerHTML=h;
+  box.querySelectorAll('.qz-opt').forEach(function(b){
+    b.onclick=function(){ answerQ(parseInt(b.dataset.i,10)) };
+  });
+  box.scrollTop=0;
+}
+function answerQ(i){
+  var q=QUIZ.items[QUIZ.idx], right=(i===q.a);
+  if(right) QUIZ.score++;
+  QUIZ.log.push({id:q.id,ok:right,l:q.l,c:q.c});
+  var opts=document.querySelectorAll('.qz-opt');
+  opts.forEach(function(b,k){
+    b.disabled=true;
+    if(k===q.a) b.classList.add('ok');
+    else if(k===i) b.classList.add('no');
+  });
+  var fb=document.getElementById('qzfb');
+  fb.innerHTML='<div class="qz-verdict '+(right?'ok':'no')+'">'+(right?'答對了':'答錯了，正確答案是「'+htmlEsc(q.o[q.a])+'」')+'</div>'+
+    '<div class="qz-exp">'+htmlEsc(cleanOut(q.e))+'</div>'+
+    '<div class="qz-src">教材出處：《'+htmlEsc(docTitle(q.f))+'》</div>'+
+    '<button class="t-btn" id="qznext">'+(QUIZ.idx<9?'下一題':'看成績')+'</button>';
+  document.getElementById('qznext').onclick=function(){
+    QUIZ.idx++;
+    if(QUIZ.idx>=10) finishQuiz(); else renderQ();
+  };
+  fb.scrollIntoView({block:'nearest'});
+}
+function finishQuiz(){
+  var rec={at:Date.now(),user:currentUser(),score:QUIZ.score,total:10,
+           detail:QUIZ.log.map(function(x){return {id:x.id,ok:x.ok,l:x.l,c:x.c}})};
+  quizSave(rec);
+  var wrong=QUIZ.log.filter(function(x){return !x.ok}).length;
+  var bycat={};
+  QUIZ.log.forEach(function(x){ bycat[x.c]=bycat[x.c]||{n:0,k:0}; bycat[x.c].n++; if(x.ok) bycat[x.c].k++ });
+  var cats=Object.keys(bycat).map(function(c){ return c+' '+bycat[c].k+'/'+bycat[c].n }).join('　');
+  var msg=QUIZ.score>=9?'表現很好':QUIZ.score>=7?'大致掌握了':QUIZ.score>=5?'還有一些觀念要補':'建議回去看教材再試一次';
+  var h='<div class="qz-done"><div class="qz-score">'+QUIZ.score+' / 10</div>'+
+        '<div class="qz-msg">'+msg+'</div>'+
+        '<div class="qz-cats">'+htmlEsc(cats)+'</div>'+
+        (wrong?'<div class="qz-wronglist"><b>答錯的題目</b>':'');
+  if(wrong){
+    QUIZ.items.forEach(function(q,k){
+      if(QUIZ.log[k]&&!QUIZ.log[k].ok){
+        h+='<div class="qz-wrong">'+htmlEsc(cleanOut(q.q))+'<br><span>正解：'+htmlEsc(q.o[q.a])+'　《'+htmlEsc(docTitle(q.f))+'》</span></div>';
+      }
+    });
+    h+='</div>';
+  }
+  h+='<div class="qz-act"><button class="t-btn" id="qzagain">再測一次</button>'+
+     '<button class="t-btn alt" id="qzclose2">關閉</button></div></div>';
+  document.getElementById('quizbody').innerHTML=h;
+  document.getElementById('qzagain').onclick=startQuiz;
+  document.getElementById('qzclose2').onclick=closeQuiz;
+}
+document.getElementById('quizx').onclick=closeQuiz;
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&QUIZ.open) closeQuiz() });
+
+/* ---- 教師端：學習紀錄（這台裝置） ---- */
+function paintRecords(){
+  var box=document.getElementById('reclist');
+  if(!box) return;
+  var users=[];
+  try{ users=JSON.parse(localStorage.getItem('sommUsers')||'[]') }catch(e){}
+  var rows=[];
+  users.forEach(function(u){
+    var h=[];
+    try{ h=JSON.parse(localStorage.getItem('sommQuiz_'+u)||'[]') }catch(e){}
+    h.forEach(function(r){ rows.push({u:u,at:r.at,score:r.score,total:r.total,detail:r.detail||[]}) });
+  });
+  rows.sort(function(a,b){ return b.at-a.at });
+  if(!rows.length){ box.innerHTML='<p class="t-empty">這台裝置還沒有測驗紀錄。<br>學生在自己的裝置上作答，紀錄留在他們的瀏覽器，老師這裡看不到。<br>要集中管理需要後端。</p>'; return }
+  var per={};
+  rows.forEach(function(r){ per[r.u]=per[r.u]||{n:0,s:0,best:0}; per[r.u].n++; per[r.u].s+=r.score; per[r.u].best=Math.max(per[r.u].best,r.score) });
+  var h='<div class="t-up"><b style="font-weight:500">摘要</b><div style="margin-top:8px;font-size:13px;line-height:2">';
+  Object.keys(per).forEach(function(u){
+    h+=htmlEsc(u)+'　作答 '+per[u].n+' 次　平均 '+(per[u].s/per[u].n).toFixed(1)+' 分　最佳 '+per[u].best+' 分<br>';
+  });
+  h+='</div><div class="t-uprow" style="margin-top:10px"><button class="t-btn alt" id="reccsv">匯出 CSV</button></div></div>';
+  rows.slice(0,60).forEach(function(r){
+    var d=new Date(r.at);
+    h+='<div class="doc"><div class="dn">'+htmlEsc(r.u)+
+       '<div class="dm">'+d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+'</div></div>'+
+       '<div style="font-size:16px;font-weight:500;color:var(--wine)">'+r.score+' / '+r.total+'</div></div>';
+  });
+  box.innerHTML=h;
+  var b=document.getElementById('reccsv');
+  if(b) b.onclick=function(){
+    var csv='帳號,時間,分數,總題數\n';
+    rows.forEach(function(r){ csv+='"'+r.u+'","'+new Date(r.at).toLocaleString()+'",'+r.score+','+r.total+'\n' });
+    var blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='quiz-records.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  };
+}
 
 </script>
 </body>
