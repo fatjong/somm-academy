@@ -90,6 +90,13 @@ input{font-family:inherit;font-size:inherit}
 .hist li a{display:block;padding:8px 11px;border-radius:3px;font-size:13.5px;color:var(--ink-soft);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hist li a:hover{background:var(--surface)}
 .hist li a.cur{background:var(--surface);color:var(--ink);box-shadow:inset 2px 0 0 var(--wine)}
+.hist li a{display:flex;align-items:center;gap:6px;white-space:normal}
+.hist li a .ct{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist li a .cd{font-size:11px;color:var(--ink-faint);flex:0 0 auto}
+.hist li a .cx{background:none;border:none;color:var(--ink-faint);font-size:15px;line-height:1;padding:0 2px;flex:0 0 auto;opacity:.45}
+.hist li a:hover .cx{opacity:1}
+.hist li a .cx:hover{color:#B3403F}
+.conv-empty{font-size:12.5px;color:var(--ink-faint);padding:6px 11px;list-style:none}
 .hist .hint{font-size:12px;color:var(--ink-faint);line-height:1.7;margin-top:20px;padding:0 11px}
 
 .chat{display:flex;flex-direction:column;background:var(--paper);height:100%;overflow:hidden}
@@ -227,6 +234,8 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
 .qz-verdict.ok{color:var(--wine)} .qz-verdict.no{color:#B3403F}
 .qz-exp{font-size:13.5px;line-height:1.9;color:var(--ink-soft);background:var(--surface-2);border-left:2px solid var(--gold);padding:11px 13px;border-radius:3px}
 .qz-src{font-size:12px;color:var(--ink-faint);margin:7px 0 12px}
+.qz-srcbtn{background:none;border:none;padding:0;font-size:12px;color:var(--gold);text-decoration:underline;text-underline-offset:2px}
+.qz-srcbtn:hover{color:var(--wine)}
 .qz-done{text-align:center;padding:10px 0}
 .qz-score{font-family:var(--serif);font-size:42px;font-weight:600;color:var(--wine);line-height:1.2}
 .qz-msg{font-size:14.5px;margin:6px 0 4px}
@@ -416,7 +425,7 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
 
 <div class="quiz" id="quiz" role="dialog" aria-modal="true">
   <div class="quiz-box">
-    <div class="quiz-head"><span>課程測驗</span><button class="pop-x" id="quizx">關閉</button></div>
+    <div class="quiz-head"><span>課程測驗</span><span style="display:flex;gap:6px"><button class="pop-x" id="qzvoice">語音開</button><button class="pop-x" id="quizx">關閉</button></span></div>
     <div class="quiz-body" id="quizbody"></div>
   </div>
 </div>
@@ -517,13 +526,8 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
   <aside class="col hist">
     <button class="newchat" id="newchat">＋ 新對話</button>
     <h2>歷史對話</h2>
-    <ul>
-      <li><a href="#" class="cur" onclick="return false">單寧與餐點的平衡</a></li>
-      <li><a href="#" onclick="return false">Burgundy 分級怎麼看</a></li>
-      <li><a href="#" onclick="return false">開瓶與試酒的順序</a></li>
-      <li><a href="#" onclick="return false">白酒侍酒溫度</a></li>
-    </ul>
-    <p class="hint">按「隱藏」只會從你的列表移除，課程管理紀錄仍由老師保留。</p>
+    <ul id="convlist"></ul>
+    <p class="hint">對話紀錄存在這台裝置的瀏覽器，換裝置看不到。按 × 會從列表移除。</p>
   </aside>
 
   <main class="col chat" id="chatcol">
@@ -1312,7 +1316,7 @@ function answer(key){
       if(!ttsOn||!synth) setState('idle');
       typeOut(bub,a,function(){
         if(a.flag){var f=document.createElement('div');f.className='flag';f.textContent='✓ '+a.flag;bub.appendChild(f)}
-        bindCites(bub); busy=false; scrollEnd();
+        bindCites(bub); busy=false; scrollEnd(); if(typeof convPush==='function') convPush('ai',{html:a.html,src:a.src});
       });
     },reduce?0:650);
   },reduce?0:600);
@@ -1389,7 +1393,7 @@ function freeAsk(){
 }
 document.getElementById('sendbtn').onclick=freeAsk;
 askEl.onkeydown=function(e){if(e.key==='Enter')freeAsk()};
-document.getElementById('newchat').onclick=function(){if(!busy)welcome(false)};
+document.getElementById('newchat').onclick=function(){ if(typeof convNew==='function') convNew(); else if(!busy) welcome(false) };
 
 function showTab(which){
   app.classList.toggle('showsrc',which==='src');
@@ -1407,6 +1411,7 @@ document.getElementById('signin').onclick=function(){
     t.children[1].onclick=function(){showTab('src')};
   }
   buildVoicePanel(); buildChips(); welcome(true);
+  if(typeof paintConv==='function'){ CONV.id=null; paintConv() }
 };
 document.getElementById('backbtn').onclick=function(){stopSpeak();app.classList.remove('on');login.style.display='flex'};
 document.getElementById('pw').onkeydown=function(e){if(e.key==='Enter')document.getElementById('signin').click()};
@@ -1763,6 +1768,7 @@ function liveAsk(qIn){
   if(typeof qIn!=='string') el.value='';
   busy=true; stopSpeak();
   addYou(q); setState('think');
+  if(typeof convPush==='function') convPush('you',q);
   sayQuestion(q);
 
   var d=document.createElement('div'); d.className='msg ai';
@@ -1794,7 +1800,7 @@ function liveAsk(qIn){
       if(!ttsOn||!synth) setState('idle');
       typeOut(bub,a,function(){
         if(a.flag){var f=document.createElement('div');f.className='flag';f.textContent='✓ '+a.flag;bub.appendChild(f)}
-        bindCites(bub); busy=false; scrollEnd();
+        bindCites(bub); busy=false; scrollEnd(); if(typeof convPush==='function') convPush('ai',{html:a.html,src:a.src});
       });
     },520);
   },480);
@@ -2405,6 +2411,9 @@ function renderQ(){
     b.onclick=function(){ answerQ(parseInt(b.dataset.i,10)) };
   });
   box.scrollTop=0;
+  var say=(q.t==='tf'?'是非題。':'選擇題。')+cleanOut(q.q).replace(/＿+/g,'空格')+'。';
+  if(q.t!=='tf') say+='選項：'+q.o.join('、')+'。';
+  qzSay(say);
 }
 function answerQ(i){
   var q=QUIZ.items[QUIZ.idx], right=(i===q.a);
@@ -2419,9 +2428,13 @@ function answerQ(i){
   var fb=document.getElementById('qzfb');
   fb.innerHTML='<div class="qz-verdict '+(right?'ok':'no')+'">'+(right?'答對了':'答錯了，正確答案是「'+htmlEsc(q.o[q.a])+'」')+'</div>'+
     '<div class="qz-exp">'+htmlEsc(cleanOut(q.e))+'</div>'+
-    '<div class="qz-src">教材出處：《'+htmlEsc(docTitle(q.f))+'》</div>'+
+    '<div class="qz-src">教材出處：<button class="qz-srcbtn" id="qzsrc">《'+htmlEsc(docTitle(q.f))+'》查看原文段落</button></div>'+
     '<button class="t-btn" id="qznext">'+(QUIZ.idx<9?'下一題':'看成績')+'</button>';
+  qzSay((right?'答對了。':'答錯了。正確答案是'+q.o[q.a]+'。')+'教材原句：'+cleanOut(q.e));
+  var sb=document.getElementById('qzsrc');
+  if(sb) sb.onclick=function(){ openQuizSource(q) };
   document.getElementById('qznext').onclick=function(){
+    stopSpeak();
     QUIZ.idx++;
     if(QUIZ.idx>=10) finishQuiz(); else renderQ();
   };
@@ -2443,7 +2456,7 @@ function finishQuiz(){
   if(wrong){
     QUIZ.items.forEach(function(q,k){
       if(QUIZ.log[k]&&!QUIZ.log[k].ok){
-        h+='<div class="qz-wrong">'+htmlEsc(cleanOut(q.q))+'<br><span>正解：'+htmlEsc(q.o[q.a])+'　《'+htmlEsc(docTitle(q.f))+'》</span></div>';
+        h+='<div class="qz-wrong">'+htmlEsc(cleanOut(q.q))+'<br><span>正解：'+htmlEsc(q.o[q.a])+'　</span><button class="qz-srcbtn" data-w="'+k+'">《'+htmlEsc(docTitle(q.f))+'》查看原文</button></div>';
       }
     });
     h+='</div>';
@@ -2451,13 +2464,136 @@ function finishQuiz(){
   h+='<div class="qz-act"><button class="t-btn" id="qzagain">再測一次</button>'+
      '<button class="t-btn alt" id="qzclose2">關閉</button></div></div>';
   document.getElementById('quizbody').innerHTML=h;
+  document.getElementById('quizbody').querySelectorAll('[data-w]').forEach(function(b){
+    b.onclick=function(){ openQuizSource(QUIZ.items[parseInt(b.dataset.w,10)]) };
+  });
   document.getElementById('qzagain').onclick=startQuiz;
   document.getElementById('qzclose2').onclick=closeQuiz;
 }
-document.getElementById('quizx').onclick=closeQuiz;
+QUIZ.voice=true;
+try{ QUIZ.voice=localStorage.getItem('sommQuizVoice')!=='0' }catch(e){}
+function qzSay(t){ if(!QUIZ.voice||!ttsOn) return; setState('speak'); speak(cleanOut(t),function(){ setState('idle') }) }
+(function(){
+  var b=document.getElementById('qzvoice');
+  function paint(){ b.textContent=QUIZ.voice?'語音開':'語音關' }
+  b.onclick=function(){
+    QUIZ.voice=!QUIZ.voice;
+    try{ localStorage.setItem('sommQuizVoice',QUIZ.voice?'1':'0') }catch(e){}
+    if(!QUIZ.voice) stopSpeak();
+    paint();
+  };
+  paint();
+})();
+/* 出處：找出題目原句所在的教材段落，開啟彈窗並標示答案關鍵字 */
+function openQuizSource(q){
+  var key='qz-'+(q.id||Math.random());
+  var chunk=null;
+  try{
+    var cs=kbChunks(), target=norm(q.e).slice(0,24);
+    for(var i=0;i<cs.length;i++){ if(norm(cs[i].text).indexOf(target)>=0){ chunk=cs[i]; break } }
+  }catch(e){}
+  DOCS[key]={t:chunk?chunk.docName:q.f, loc:chunk?(chunk.loc||''):'題目出處',
+             ex:chunk?chunk.text:q.e, q:q.o[q.a]};
+  openSource(key);
+}
+document.getElementById('quizx').onclick=function(){ stopSpeak(); closeQuiz() };
 document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&QUIZ.open) closeQuiz() });
 
 /* ---- 教師端：學習紀錄（這台裝置） ---- */
+/* ==================================================================
+   歷史對話：依登入帳號存在這台裝置的瀏覽器
+   ================================================================== */
+var CONV={id:null,list:null};
+function convKeyAll(){ return 'sommConvs_'+currentUser() }
+function convAll(){
+  try{ return JSON.parse(localStorage.getItem(convKeyAll())||'[]') }catch(e){ return [] }
+}
+function convWrite(arr){
+  try{ localStorage.setItem(convKeyAll(),JSON.stringify(arr.slice(0,30))) }catch(e){}
+}
+function convCurrent(){
+  var all=convAll();
+  for(var i=0;i<all.length;i++) if(all[i].id===CONV.id) return all[i];
+  return null;
+}
+function convPush(role,payload){
+  var all=convAll(), c=null;
+  for(var i=0;i<all.length;i++) if(all[i].id===CONV.id){ c=all[i]; break }
+  if(!c){
+    c={id:'c'+Date.now(),title:'',at:Date.now(),msgs:[]};
+    CONV.id=c.id; all.unshift(c);
+  }
+  if(role==='you'){
+    c.msgs.push({r:'you',t:String(payload)});
+    if(!c.title) c.title=String(payload).replace(/\s+/g,' ').slice(0,20);
+  }else{
+    /* 一併存下引用的教材，之後重新開啟才點得開 */
+    var srcs=[];
+    (payload.src||[]).forEach(function(k){
+      var d=DOCS[k];
+      if(d) srcs.push({k:k,t:d.t,loc:d.loc,ex:d.ex,q:d.q||''});
+    });
+    c.msgs.push({r:'ai',h:payload.html,s:srcs});
+  }
+  c.at=Date.now();
+  all.sort(function(a,b){ return b.at-a.at });
+  convWrite(all); paintConv();
+}
+function convNew(){
+  if(busy) return;
+  CONV.id=null; welcome(false); paintConv();
+}
+function convLoad(id){
+  if(busy) return;
+  stopSpeak();
+  var all=convAll(), c=null;
+  for(var i=0;i<all.length;i++) if(all[i].id===id){ c=all[i]; break }
+  if(!c) return;
+  CONV.id=id;
+  wrap.innerHTML='';
+  c.msgs.forEach(function(m){
+    if(m.r==='you'){ addYou(m.t); return }
+    (m.s||[]).forEach(function(d){ DOCS[d.k]={t:d.t,loc:d.loc,ex:d.ex,q:d.q} });
+    var d=document.createElement('div'); d.className='msg ai';
+    d.innerHTML='<div class="lbl">AI侍酒師問答庫</div><div class="bub">'+m.h+'</div>';
+    wrap.appendChild(d);
+    bindCites(d.querySelector('.bub'));
+  });
+  var last=null;
+  for(var k=c.msgs.length-1;k>=0;k--) if(c.msgs[k].r==='ai'){ last=c.msgs[k]; break }
+  renderSrc(last?(last.s||[]).map(function(x){return x.k}):[]);
+  setState('idle'); scrollEnd(); paintConv();
+  if(window.innerWidth<=820) showTab('chat');
+}
+function convDelete(id,ev){
+  if(ev) ev.stopPropagation();
+  var all=convAll().filter(function(c){ return c.id!==id });
+  convWrite(all);
+  if(CONV.id===id){ CONV.id=null; welcome(false) }
+  paintConv();
+}
+function paintConv(){
+  var box=document.getElementById('convlist');
+  if(!box) return;
+  var all=convAll();
+  if(!all.length){ box.innerHTML='<li class="conv-empty">還沒有對話紀錄</li>'; return }
+  var h='';
+  all.forEach(function(c){
+    var d=new Date(c.at);
+    h+='<li><a href="#" data-id="'+c.id+'" class="'+(c.id===CONV.id?'cur':'')+'">'+
+       '<span class="ct">'+htmlEsc(c.title||'未命名對話')+'</span>'+
+       '<span class="cd">'+(d.getMonth()+1)+'/'+d.getDate()+'</span>'+
+       '<button class="cx" data-del="'+c.id+'" title="隱藏">×</button></a></li>';
+  });
+  box.innerHTML=h;
+  box.querySelectorAll('a[data-id]').forEach(function(a){
+    a.onclick=function(e){ e.preventDefault(); convLoad(a.dataset.id) };
+  });
+  box.querySelectorAll('[data-del]').forEach(function(b){
+    b.onclick=function(e){ e.preventDefault(); convDelete(b.dataset.del,e) };
+  });
+}
+
 function paintRecords(){
   var box=document.getElementById('reclist');
   if(!box) return;
