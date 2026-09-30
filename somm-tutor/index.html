@@ -1198,7 +1198,8 @@ function keywordsFor(q,text){
 }
 function markText(text,q){
   text=String(text||'').replace(/<\/?mark>/g,'');
-  var kws=keywordsFor(q,text);
+  /* 以 == 開頭表示逐字標記指定句段（用 || 分隔），不經疑問詞過濾 */
+  var kws=(typeof q==='string'&&q.indexOf('==')===0)?q.slice(2).split('||').filter(function(x){return x&&text.indexOf(x)>=0}):keywordsFor(q,text);
   if(!kws.length) return htmlEsc(text);
   var re=new RegExp(kws.map(reEsc).join('|'),'gi'), out='', last=0, m;
   while((m=re.exec(text))){
@@ -2487,13 +2488,31 @@ function qzSay(t){ if(!QUIZ.voice||!ttsOn) return; setState('speak'); speak(clea
 /* 出處：找出題目原句所在的教材段落，開啟彈窗並標示答案關鍵字 */
 function openQuizSource(q){
   var key='qz-'+(q.id||Math.random());
-  var chunk=null;
+  var anchor=q.k||q.e, target=norm(anchor).slice(0,24), chunk=null;
   try{
-    var cs=kbChunks(), target=norm(q.e).slice(0,24);
-    for(var i=0;i<cs.length;i++){ if(norm(cs[i].text).indexOf(target)>=0){ chunk=cs[i]; break } }
+    var cs=kbChunks(), want=docTitle(q.f);
+    /* 先在題目指定的那份教材裡找；同一句話可能出現在不同教材 */
+    for(var i=0;i<cs.length;i++){
+      if(docTitle(cs[i].docName)===want&&norm(cs[i].text).indexOf(target)>=0){ chunk=cs[i]; break }
+    }
+    if(!chunk) for(var j=0;j<cs.length;j++){ if(norm(cs[j].text).indexOf(target)>=0){ chunk=cs[j]; break } }
   }catch(e){}
-  DOCS[key]={t:chunk?chunk.docName:q.f, loc:chunk?(chunk.loc||''):'題目出處',
-             ex:chunk?chunk.text:q.e, q:q.o[q.a]};
+  var text=chunk?chunk.text:anchor;
+  /* 出處原句只標完整的長句段（6 字以上且逐字出現在段落裡），不拆成零碎的詞 */
+  function anchorMarks(a,t){
+    var runs=(String(a).match(/[\u4e00-\u9fa5A-Za-z0-9]{6,}/g)||[]).filter(function(r){ return t.indexOf(r)>=0 });
+    return runs.length?('=='+runs.join('||')):a;
+  }
+  /* 反黃：選擇題標答案；答案字面不在段落裡、或是非題，就標出處原句 */
+  var mark=anchorMarks(anchor,text);
+  if(q.t!=='tf'){
+    /* 答案詞在段落裡出現太多次會標滿整段，這時改標出處原句 */
+    var ans=q.o[q.a], kw=[], cnt=0;
+    try{ kw=keywordsFor(ans,text) }catch(e){}
+    kw.forEach(function(k){ cnt+=text.split(k).length-1 });
+    if(kw.length&&cnt<=4) mark=ans;
+  }
+  DOCS[key]={t:chunk?chunk.docName:q.f, loc:chunk?(chunk.loc||''):'題目出處', ex:text, q:mark};
   openSource(key);
 }
 document.getElementById('quizx').onclick=function(){ stopSpeak(); closeQuiz() };
