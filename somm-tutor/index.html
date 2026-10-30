@@ -2760,8 +2760,9 @@ function authErr(e){
     'auth/user-disabled':'這個帳號已被停用，請聯絡任課老師。',
     'auth/too-many-requests':'嘗試次數過多，請稍後再試。',
     'auth/network-request-failed':'網路連線失敗，請確認網路後再試。',
-    'auth/operation-not-allowed':'帳號系統尚未開啟「電子郵件／密碼」登入方式，請通知管理者。',
-    'auth/configuration-not-found':'帳號系統尚未完成設定，請通知管理者。',
+    'auth/operation-not-allowed':'帳號系統尚未開啟電子郵件登入。管理者請到 Firebase 主控台 → Authentication → 登入方式，開啟「電子郵件/密碼」。',
+    'auth/configuration-not-found':'帳號系統尚未啟用。管理者請到 Firebase 主控台 → Authentication 按「開始使用」，再到「登入方式」開啟「電子郵件/密碼」。',
+    'auth/unauthorized-domain':'這個網址尚未加入授權網域。管理者請到 Firebase 主控台 → Authentication → 設定 → 授權網域，加入 '+location.hostname+'。',
     'auth/invalid-api-key':'帳號系統設定錯誤（API 金鑰無效），請通知管理者。',
     'auth/api-key-not-valid.-please-pass-a-valid-api-key.':'帳號系統設定錯誤（API 金鑰無效），請通知管理者。'
   };
