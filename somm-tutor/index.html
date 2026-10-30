@@ -284,6 +284,9 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
 .ch-conv b{font-weight:500;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ch-conv span{font-size:11px;color:var(--ink-faint)}
 .ch-conv.on{border-color:var(--wine);background:var(--wine-tint)}
+.ch-act{display:flex;gap:6px;flex-wrap:wrap}
+.ch-convbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:12.5px;color:var(--ink-soft)}
+.ch-convbar b{font-weight:500;word-break:break-all}
 .ch-screen{background:var(--paper);border:1px solid var(--rule);border-radius:4px;padding:18px 16px;max-height:62vh;overflow-y:auto}
 .ch-screen .msg{max-width:none}
 @media (max-width:820px){.ch-wrap{grid-template-columns:1fr}.ch-students{max-height:none;flex-direction:row;overflow-x:auto}.ch-stu{flex:0 0 200px}}
@@ -574,6 +577,7 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
       <div class="ch-bar">
         <input type="text" id="chFind" placeholder="搜尋玩家帳號、學號、姓名或信箱">
         <button class="t-btn alt" id="chReload">重新整理</button>
+        <button class="t-btn alt" id="chDlAll">下載全部紀錄</button>
         <button class="t-btn warn" id="chDelAll">清空全部紀錄</button>
       </div>
       <div class="ch-meta"><span id="chWho"></span><span id="chCount"></span></div>
@@ -3093,8 +3097,13 @@ function cloudSaveConv(c){
   ref.set({uid:uid,email:ME.email,nickname:ME.nick||'',studentId:ME.sid||'',name:ME.name||'',
            updatedMs:Date.now(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})
     .then(function(){ return ref.collection('convs').doc(c.id).set(cleanForCloud(c)) })
-    .catch(function(e){ console.warn('問答紀錄未存到雲端：',e&&e.code) });
+    .then(function(){ CLOUD_FAIL=0 })
+    .catch(function(e){
+      console.warn('問答紀錄未存到雲端：',e&&e.code);
+      if(!CLOUD_FAIL++) toast('這段問答沒有存到雲端（'+((e&&e.code)||'連線問題')+'），老師後台會看不到，請通知老師。');
+    });
 }
+var CLOUD_FAIL=0;
 var _convPush=convPush;
 convPush=function(role,payload){
   _convPush(role,payload);
@@ -3201,7 +3210,7 @@ function openStudent(uid){
   AUTH.db.collection('chats').doc(uid).collection('convs').orderBy('updatedMs','desc').limit(200).get().then(function(snap){
     TCH.convs=snap.docs.map(function(d){ var x=d.data()||{}; x.id=d.id; return x });
     var h='<div class="ch-head"><div><b>'+htmlEsc(s.nickname||s.email||'')+'</b><span>'+htmlEsc([s.studentId,s.name,s.email].filter(Boolean).join('　'))+'</span></div>'+
-          '<button class="t-btn warn" id="chDelOne">清空此學生紀錄</button></div>';
+          '<div class="ch-act"><button class="t-btn alt" id="chDlOne">下載此學生紀錄</button><button class="t-btn warn" id="chDelOne">清空此學生紀錄</button></div></div>';
     if(!TCH.convs.length) h+='<p class="t-empty">這位學生沒有問答紀錄。</p>';
     else h+='<div class="ch-convs">'+TCH.convs.map(function(c){
       return '<button class="ch-conv" data-id="'+htmlEsc(c.id)+'"><b>'+htmlEsc(c.title||'未命名對話')+'</b><span>'+fmtT(tsMs(c.updatedAt,c.updatedMs))+'　'+(c.count||0)+' 個問題</span></button>';
@@ -3209,6 +3218,10 @@ function openStudent(uid){
     v.innerHTML=h;
     v.querySelectorAll('.ch-conv').forEach(function(b){ b.onclick=function(){ openConv(b.dataset.id) } });
     document.getElementById('chDelOne').onclick=function(){ clearStudent(uid,s.nickname||s.email) };
+    document.getElementById('chDlOne').onclick=function(){
+      if(!TCH.convs.length){ toast('這位學生沒有紀錄可下載'); return }
+      downloadCsv(recRows(s,TCH.convs),'問答紀錄_'+(s.nickname||s.email||uid));
+    };
     if(TCH.convs.length) openConv(TCH.convs[0].id);
   }).catch(function(e){ v.innerHTML='<p class="t-empty">讀取失敗：'+htmlEsc((e&&e.code)||String(e))+'</p>' });
 }
@@ -3238,6 +3251,12 @@ function openConv(id){
   document.querySelectorAll('.ch-conv').forEach(function(b){ b.classList.toggle('on',b.dataset.id===id) });
   var s=TCH.students.filter(function(x){return x.uid===TCH.sel})[0]||{};
   var scr=document.getElementById('chScreen'); scr.innerHTML='';
+  var bar=document.createElement('div'); bar.className='ch-convbar';
+  bar.innerHTML='<b></b><div class="ch-act"><button class="t-btn alt" id="chDlConv">下載這段對話</button><button class="t-btn warn" id="chDelConv">刪除這段對話</button></div>';
+  bar.querySelector('b').textContent=(c.title||'未命名對話')+'　'+fmtT(tsMs(c.updatedAt,c.updatedMs));
+  scr.appendChild(bar);
+  bar.querySelector('#chDlConv').onclick=function(){ downloadCsv(recRows(s,[c]),'問答紀錄_'+(s.nickname||s.email||'')+'_'+(c.title||'對話')) };
+  bar.querySelector('#chDelConv').onclick=function(){ deleteConv(TCH.sel,c) };
   (c.msgs||[]).forEach(function(m){
     var d=document.createElement('div');
     if(m.r==='you'){
@@ -3253,7 +3272,7 @@ function openConv(id){
     }
     scr.appendChild(d);
   });
-  if(!scr.children.length) scr.innerHTML='<p class="t-empty">這段對話沒有內容。</p>';
+  if(scr.children.length<2) scr.insertAdjacentHTML('beforeend','<p class="t-empty">這段對話沒有內容。</p>');
 }
 
 /* ---- 刪除雲端紀錄 ---- */
@@ -3286,6 +3305,74 @@ document.getElementById('chDelAll').onclick=function(){
       toast('已清空全部問答紀錄'); TCH.sel=null; document.getElementById('chView').innerHTML=''; paintChats();
     }).catch(function(e){ toast('刪除失敗：'+((e&&e.code)||e)); paintChats() });
   });
+};
+/* ---- 刪除單筆對話 ---- */
+function deleteConv(uid,c){
+  var s=TCH.students.filter(function(x){return x.uid===uid})[0]||{};
+  var label=s.nickname||s.email||'';
+  pwConfirm('刪除這段對話','會永久刪除「'+label+'」的對話「'+(c.title||'未命名對話')+'」（'+(c.count||0)+' 個問題），無法復原。').then(function(ok){
+    if(!ok) return;
+    var ref=AUTH.db.collection('chats').doc(uid);
+    ref.collection('convs').doc(c.id).delete().then(function(){
+      TCH.convs=TCH.convs.filter(function(x){return x.id!==c.id});
+      toast('已刪除這段對話');
+      if(!TCH.convs.length){   // 最後一段也刪了，學生就從清單移除
+        return ref.delete().catch(function(){}).then(function(){ TCH.sel=null; document.getElementById('chView').innerHTML=''; paintChats() });
+      }
+      openStudent(uid);
+    }).catch(function(e){ toast('刪除失敗：'+((e&&e.code)||e)) });
+  });
+}
+
+/* ---- 下載紀錄（CSV，Excel 可直接開啟） ---- */
+function plainAnswer(h){
+  var t=document.createElement('template'); t.innerHTML=String(h||'');
+  Array.prototype.slice.call(t.content.querySelectorAll('sup')).forEach(function(x){ x.parentNode.removeChild(x) });
+  Array.prototype.slice.call(t.content.querySelectorAll('p,li,br,div')).forEach(function(x){ x.parentNode.insertBefore(document.createTextNode('\n'),x) });
+  return (t.content.textContent||'').replace(/[ \t]+\n/g,'\n').replace(/\n{2,}/g,'\n').trim();
+}
+function recRows(s,convs){
+  var rows=[];
+  convs.forEach(function(c){
+    var n=0, q=null;
+    function push(ai){
+      n++;
+      rows.push([s.nickname||'',s.studentId||'',s.name||'',s.email||'',c.title||'',fmtT(tsMs(c.updatedAt,c.updatedMs)),n,
+        q==null?'':q, ai?plainAnswer(ai.h):'',
+        ai?(ai.s||[]).map(function(x){ return [docTitle(x.t),x.loc].filter(Boolean).join(' ') }).filter(Boolean).join('；'):'']);
+    }
+    (c.msgs||[]).forEach(function(m){
+      if(m.r==='you'){ if(q!=null) push(null); q=m.t||'' }
+      else { push(m); q=null }
+    });
+    if(q!=null) push(null);
+  });
+  return rows;
+}
+function downloadCsv(rows,name){
+  var head=['玩家帳號','學號','姓名','電子郵件','對話標題','最後更新','題號','學生提問','AI 回答','引用教材'];
+  var esc=function(v){ v=String(v==null?'':v); return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v };
+  var csv='﻿'+[head].concat(rows).map(function(r){ return r.map(esc).join(',') }).join('\r\n');
+  var d=new Date(), stamp=d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2);
+  var fn=(String(name).replace(/[\\\/:*?"<>|\s]+/g,'_').slice(0,80))+'_'+stamp+'.csv';
+  var url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  var a=document.createElement('a'); a.href=url; a.download=fn; document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove() },1000);
+  window.__lastCsv={name:fn,csv:csv};
+  toast('已下載 '+rows.length+' 筆問答');
+}
+document.getElementById('chDlAll').onclick=function(){
+  if(!TCH.students.length){ toast('目前沒有可下載的紀錄'); return }
+  toast('整理中…');
+  var rows=[];
+  TCH.students.reduce(function(p,s){
+    return p.then(function(){
+      return AUTH.db.collection('chats').doc(s.uid).collection('convs').orderBy('updatedMs','desc').limit(500).get().then(function(snap){
+        rows=rows.concat(recRows(s,snap.docs.map(function(d){ var x=d.data()||{}; x.id=d.id; return x })));
+      });
+    });
+  },Promise.resolve()).then(function(){ downloadCsv(rows,'問答紀錄_全部') })
+    .catch(function(e){ toast('下載失敗：'+((e&&e.code)||e)) });
 };
 document.getElementById('chReload').onclick=paintChats;
 document.getElementById('chFind').oninput=renderStudents;
