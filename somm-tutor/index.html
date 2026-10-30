@@ -63,7 +63,24 @@ input{font-family:inherit;font-size:inherit}
 .field input:focus{border-color:var(--wine);outline:none;box-shadow:0 0 0 3px var(--wine-tint)}
 .btn-primary{width:100%;padding:12px;background:var(--wine);color:var(--wine-ink);border:none;border-radius:3px;font-weight:500;letter-spacing:.04em}
 .btn-primary:hover{filter:brightness(1.1)}
-.login-links{display:flex;gap:20px;margin-top:15px;font-size:13px}
+.login-links{display:flex;gap:18px;margin-top:15px;font-size:13px;flex-wrap:wrap}
+.auth-row{display:flex;gap:12px}
+.auth-row .field{flex:1;min-width:0}
+.field small{display:block;font-size:11.5px;color:var(--ink-faint);margin-top:5px;line-height:1.6}
+.field input[type=month]{color-scheme:light dark}
+.auth-msg{min-height:1.2em;font-size:12.5px;line-height:1.7;margin:2px 0 10px}
+.auth-msg.err{color:#D9534F}
+.auth-msg.ok{color:var(--ok,#2E7D5B)}
+.auth-lead{font-size:15px;margin:0 0 8px;line-height:1.7;word-break:break-all}
+.auth-lead b{font-weight:500;color:var(--wine)}
+.auth-help{font-size:13px;color:var(--ink-soft);line-height:1.85;margin:0 0 14px}
+.auth-notice{font-size:12.5px;line-height:1.8;background:var(--gold-tint);border-left:2px solid var(--gold);color:var(--ink-soft);padding:10px 13px;border-radius:3px;margin-bottom:16px}
+.auth-notice code{font-size:11.5px;background:var(--surface);padding:1px 5px;border-radius:2px}
+.auth-guest{margin-top:14px;width:100%;padding:9px;background:none;border:1px dashed var(--rule);border-radius:3px;font-size:13px;color:var(--ink-soft)}
+.auth-guest:hover{border-color:var(--wine);color:var(--wine)}
+.btn-primary:disabled{opacity:.6;cursor:wait}
+.whoami{font-size:11.5px;color:var(--ink-faint);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;align-self:center}
+@media (max-width:480px){.auth-row{flex-direction:column;gap:0}}
 .login-links a{color:var(--ink-soft);text-decoration:none;border-bottom:1px solid var(--rule)}
 .login-links a:hover{color:var(--wine);border-color:var(--wine)}
 .login-foot{border-top:1px solid var(--rule);background:var(--surface-2);padding:24px 24px 32px}
@@ -310,6 +327,10 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-auth-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
 </head>
 <body>
 
@@ -383,14 +404,70 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
     <div class="login-card">
       <h1>AI侍酒師問答庫</h1>
       <p class="sub">葡萄酒賞析與服務課程專用。</p>
-      <div class="field"><label for="em">電子郵件</label><input id="em" type="email" placeholder="your.name@gm.lhu.edu.tw" autocomplete="email"></div>
-      <div class="field"><label for="pw">密碼</label><input id="pw" type="password" placeholder="至少 10 個字元" autocomplete="current-password"></div>
-      <button class="btn-primary" id="signin">登入</button>
-      <div class="login-links">
-        <a href="#" onclick="return false">忘記密碼</a>
-        <a href="#" onclick="return false">註冊帳號</a>
-        <a href="#" onclick="return false">重寄驗證信</a>
-        <a href="#" id="t-enter">教師登入</a>
+      <div id="authNotice" class="auth-notice" hidden></div>
+
+      <!-- 登入 -->
+      <div class="auth-view" data-view="login">
+        <div class="field"><label for="em">電子郵件</label><input id="em" type="email" placeholder="your.name@gm.lhu.edu.tw" autocomplete="email"></div>
+        <div class="field"><label for="pw">密碼</label><input id="pw" type="password" placeholder="註冊時設定的密碼" autocomplete="current-password"></div>
+        <p class="auth-msg" id="loginMsg" role="alert"></p>
+        <button class="btn-primary" id="signin">登入</button>
+        <div class="login-links">
+          <a href="#" data-go="forgot">忘記密碼</a>
+          <a href="#" data-go="register">註冊帳號</a>
+          <a href="#" id="t-enter">教師登入</a>
+        </div>
+        <button class="auth-guest" id="guestBtn" hidden>以訪客身分試用</button>
+      </div>
+
+      <!-- 註冊 -->
+      <div class="auth-view" data-view="register" hidden>
+        <div class="auth-row">
+          <div class="field"><label for="rgSid">學號</label><input id="rgSid" type="text" placeholder="A1234567890" autocomplete="off"></div>
+          <div class="field"><label for="rgName">姓名</label><input id="rgName" type="text" placeholder="王小明" autocomplete="name"></div>
+        </div>
+        <div class="field"><label for="rgNick">玩家帳號（暱稱）</label><input id="rgNick" type="text" placeholder="自動帶入學號＋姓名"><small>預設為學號＋姓名，可以修改。</small></div>
+        <div class="field"><label for="rgEm">電子郵件</label><input id="rgEm" type="email" placeholder="your.name@gm.lhu.edu.tw" autocomplete="email"><small>驗證信會寄到這裡，請填常用信箱。</small></div>
+        <div class="field"><label for="rgBirth">生日（年月）</label><input id="rgBirth" type="month"></div>
+        <div class="auth-row">
+          <div class="field"><label for="rgPw">密碼</label><input id="rgPw" type="password" placeholder="至少 8 個字元" autocomplete="new-password"></div>
+          <div class="field"><label for="rgPw2">確認密碼</label><input id="rgPw2" type="password" placeholder="再輸入一次" autocomplete="new-password"></div>
+        </div>
+        <p class="auth-msg" id="regMsg" role="alert"></p>
+        <button class="btn-primary" id="regBtn">註冊並寄出驗證信</button>
+        <div class="login-links"><a href="#" data-go="login">已有帳號，回到登入</a></div>
+      </div>
+
+      <!-- 信箱驗證 -->
+      <div class="auth-view" data-view="verify" hidden>
+        <p class="auth-lead">驗證信已寄到 <b id="vfEmail"></b></p>
+        <p class="auth-help">請到信箱點選信中的連結完成驗證，再回到這裡按下方按鈕。找不到信的話，請看看垃圾郵件匣。</p>
+        <p class="auth-msg" id="vfMsg" role="alert"></p>
+        <button class="btn-primary" id="vfDone">我已完成驗證</button>
+        <div class="login-links">
+          <a href="#" id="vfResend">重寄驗證信</a>
+          <a href="#" id="vfBack">改用其他帳號</a>
+        </div>
+      </div>
+
+      <!-- 忘記密碼 -->
+      <div class="auth-view" data-view="forgot" hidden>
+        <p class="auth-help">輸入註冊時的電子郵件，系統會寄一封重設密碼的信給你。</p>
+        <div class="field"><label for="fgEm">電子郵件</label><input id="fgEm" type="email" placeholder="your.name@gm.lhu.edu.tw" autocomplete="email"></div>
+        <p class="auth-msg" id="fgMsg" role="alert"></p>
+        <button class="btn-primary" id="fgBtn">寄出重設密碼信</button>
+        <div class="login-links"><a href="#" data-go="login">回到登入</a></div>
+      </div>
+
+      <!-- 已登入 -->
+      <div class="auth-view" data-view="signed" hidden>
+        <p class="auth-lead">已登入：<b id="sgName"></b></p>
+        <p class="auth-help" id="sgEmail"></p>
+        <button class="btn-primary" id="sgEnter">進入問答</button>
+        <div class="login-links">
+          <a href="#" id="sgOut">登出</a>
+          <a href="#" id="t-enter2">教師登入</a>
+        </div>
       </div>
     </div>
   </div>
@@ -455,6 +532,7 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
       <button class="t-tab" data-t="rec">學習紀錄</button>
     </div>
     <button class="chip themetog-in" aria-label="切換色系">淺色</button>
+    <button class="chip" id="t-home">回首頁</button>
     <button class="chip" id="t-back">回學生介面</button>
   </div>
 
@@ -602,7 +680,8 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
               </div>
       <div class="stage-act">
         <button class="chip themetog-in" aria-label="切換色系">淺色</button>
-        <button class="chip" id="backbtn">回登入頁</button>
+        <span class="whoami" id="whoami"></span>
+        <button class="chip" id="backbtn">登出</button>
       </div>
     </div>
 
@@ -1401,8 +1480,7 @@ function showTab(which){
   var tabs=document.querySelectorAll('.mobtabs button');
   if(tabs.length){tabs[0].classList.toggle('on',which!=='src');tabs[1].classList.toggle('on',which==='src')}
 }
-document.getElementById('signin').onclick=function(){
-  try{ localStorage.setItem('sommUser',(document.getElementById('em').value||'').trim()||'guest') }catch(e){}
+function enterApp(){
   login.style.display='none'; app.classList.add('on'); initFig(); pickVoice();
   if(!document.querySelector('.mobtabs')){
     var t=document.createElement('div');t.className='mobtabs';
@@ -1414,7 +1492,6 @@ document.getElementById('signin').onclick=function(){
   buildVoicePanel(); buildChips(); welcome(true);
   if(typeof paintConv==='function'){ CONV.id=null; paintConv() }
 };
-document.getElementById('backbtn').onclick=function(){stopSpeak();app.classList.remove('on');login.style.display='flex'};
 document.getElementById('pw').onkeydown=function(e){if(e.key==='Enter')document.getElementById('signin').click()};
 </script>
 <script>
@@ -2649,6 +2726,247 @@ function paintRecords(){
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 }
+
+</script>
+<script>
+/* ==================================================================
+   帳號系統：Firebase Authentication（註冊、信箱驗證、登入、忘記密碼）
+   設定值放在同目錄的 firebase-config.js；沒有設定檔時只能用訪客模式試用
+   ================================================================== */
+var AUTH={fb:null,auth:null,db:null,user:null,guest:false,ready:false};
+
+function authEl(id){ return document.getElementById(id) }
+function authShow(view){
+  document.querySelectorAll('.auth-view').forEach(function(v){ v.hidden=(v.dataset.view!==view) });
+  ['loginMsg','regMsg','vfMsg','fgMsg'].forEach(function(id){ var m=authEl(id); if(m){ m.textContent=''; m.className='auth-msg' } });
+}
+function authSay(id,text,ok){ var m=authEl(id); if(!m) return; m.textContent=text; m.className='auth-msg'+(ok?' ok':' err') }
+function authBusy(btn,on,label){
+  if(!btn) return;
+  if(on){ btn.dataset.label=btn.textContent; btn.textContent=label||'處理中…'; btn.disabled=true }
+  else { btn.textContent=btn.dataset.label||btn.textContent; btn.disabled=false }
+}
+function authErr(e){
+  var c=(e&&e.code)||'';
+  var map={
+    'auth/email-already-in-use':'這個電子郵件已經註冊過了，請直接登入，或使用忘記密碼。',
+    'auth/invalid-email':'電子郵件格式不正確。',
+    'auth/weak-password':'密碼強度不足，請至少 8 個字元。',
+    'auth/missing-password':'請輸入密碼。',
+    'auth/user-not-found':'電子郵件或密碼不正確。',
+    'auth/wrong-password':'電子郵件或密碼不正確。',
+    'auth/invalid-credential':'電子郵件或密碼不正確。',
+    'auth/invalid-login-credentials':'電子郵件或密碼不正確。',
+    'auth/user-disabled':'這個帳號已被停用，請聯絡任課老師。',
+    'auth/too-many-requests':'嘗試次數過多，請稍後再試。',
+    'auth/network-request-failed':'網路連線失敗，請確認網路後再試。',
+    'auth/operation-not-allowed':'帳號系統尚未開啟「電子郵件／密碼」登入方式，請通知管理者。',
+    'auth/configuration-not-found':'帳號系統尚未完成設定，請通知管理者。',
+    'auth/invalid-api-key':'帳號系統設定錯誤（API 金鑰無效），請通知管理者。',
+    'auth/api-key-not-valid.-please-pass-a-valid-api-key.':'帳號系統設定錯誤（API 金鑰無效），請通知管理者。'
+  };
+  return map[c]||('發生錯誤，請稍後再試。'+(c?'（'+c+'）':''));
+}
+/* 驗證信、重設信點完後回到本頁。網域未加入授權清單時改用預設設定重寄 */
+function authActionSettings(){ return {url:location.origin+location.pathname,handleCodeInApp:false} }
+function authWithFallback(fn){
+  return fn(authActionSettings()).catch(function(e){
+    if(e&&(e.code==='auth/unauthorized-continue-uri'||e.code==='auth/invalid-continue-uri')) return fn(undefined);
+    throw e;
+  });
+}
+function authDisplayName(u){
+  if(!u) return '';
+  return u.displayName||u.email||'使用者';
+}
+
+/* ---- 初始化 ---- */
+function authInit(){
+  var cfg=window.FIREBASE_CONFIG;
+  var configured=cfg&&cfg.apiKey&&!/^請填入/.test(cfg.apiKey)&&cfg.projectId;
+  if(!configured||typeof firebase==='undefined'){
+    var n=authEl('authNotice');
+    n.hidden=false;
+    n.innerHTML=(typeof firebase==='undefined'&&configured)
+      ? '帳號服務暫時無法連線，請確認網路後重新整理。'
+      : '帳號系統尚未設定，目前無法註冊或登入。<br>管理者請依 <code>SETUP-ACCOUNTS.md</code> 完成設定。';
+    authEl('guestBtn').hidden=false;
+    authShow('login');
+    return;
+  }
+  try{
+    AUTH.fb=firebase.apps.length?firebase.app():firebase.initializeApp(cfg);
+    AUTH.auth=firebase.auth();
+    AUTH.auth.languageCode='zh-TW';
+    try{ AUTH.db=firebase.firestore() }catch(e){ AUTH.db=null }
+  }catch(e){
+    var n2=authEl('authNotice'); n2.hidden=false; n2.textContent='帳號系統設定有誤：'+(e&&e.message||e);
+    authEl('guestBtn').hidden=false;
+    return;
+  }
+  AUTH.auth.onAuthStateChanged(function(u){
+    AUTH.user=u; AUTH.ready=true;
+    if(!u){ authShow('login'); return }
+    if(!u.emailVerified){ authEl('vfEmail').textContent=u.email; authShow('verify'); return }
+    authEl('sgName').textContent=authDisplayName(u);
+    authEl('sgEmail').textContent=u.email;
+    authShow('signed');
+  });
+}
+
+/* ---- 進入學生介面 ---- */
+function authEnter(u){
+  var id=u?u.email:'guest';
+  try{ localStorage.setItem('sommUser',id) }catch(e){}
+  var who=authEl('whoami');
+  if(who) who.textContent=u?authDisplayName(u):'訪客';
+  enterApp();
+}
+
+/* ---- 登入 ---- */
+authEl('signin').onclick=function(){
+  if(!AUTH.auth){ authSay('loginMsg','帳號系統尚未設定，請使用訪客模式試用。'); return }
+  var em=(authEl('em').value||'').trim(), pw=authEl('pw').value||'';
+  if(!em||!pw){ authSay('loginMsg','請輸入電子郵件與密碼。'); return }
+  var b=this; authBusy(b,true,'登入中…');
+  AUTH.auth.signInWithEmailAndPassword(em,pw).then(function(cred){
+    authBusy(b,false); authEl('pw').value='';
+    var u=cred.user;
+    if(!u.emailVerified){ authEl('vfEmail').textContent=u.email; authShow('verify'); authSay('vfMsg','這個帳號還沒完成信箱驗證。'); return }
+    authEnter(u);
+  }).catch(function(e){ authBusy(b,false); authSay('loginMsg',authErr(e)) });
+};
+authEl('em').onkeydown=function(e){ if(e.key==='Enter') authEl('pw').focus() };
+
+/* ---- 註冊 ---- */
+(function(){
+  var sid=authEl('rgSid'), nm=authEl('rgName'), nick=authEl('rgNick'), touched=false;
+  function autoNick(){ if(!touched) nick.value=(sid.value.trim()+nm.value.trim()) }
+  sid.oninput=autoNick; nm.oninput=autoNick;
+  nick.oninput=function(){ touched=nick.value.trim()!=='' };
+})();
+authEl('regBtn').onclick=function(){
+  if(!AUTH.auth){ authSay('regMsg','帳號系統尚未設定，目前無法註冊。'); return }
+  var sid=authEl('rgSid').value.trim(), nm=authEl('rgName').value.trim();
+  var nick=authEl('rgNick').value.trim()||(sid+nm);
+  var em=authEl('rgEm').value.trim(), birth=authEl('rgBirth').value;
+  var pw=authEl('rgPw').value, pw2=authEl('rgPw2').value;
+  if(!sid) return authSay('regMsg','請填寫學號。');
+  if(!/^[A-Za-z0-9]{4,20}$/.test(sid)) return authSay('regMsg','學號只能包含英文字母與數字。');
+  if(!nm) return authSay('regMsg','請填寫姓名。');
+  if(!em) return authSay('regMsg','請填寫電子郵件。');
+  if(!birth) return authSay('regMsg','請選擇生日（年月）。');
+  if(pw.length<8) return authSay('regMsg','密碼至少需要 8 個字元。');
+  if(!/[A-Za-z]/.test(pw)||!/[0-9]/.test(pw)) return authSay('regMsg','密碼需同時包含英文字母與數字。');
+  if(pw!==pw2) return authSay('regMsg','兩次輸入的密碼不一致。');
+  var b=this; authBusy(b,true,'註冊中…');
+  AUTH.auth.createUserWithEmailAndPassword(em,pw).then(function(cred){
+    var u=cred.user;
+    var jobs=[u.updateProfile({displayName:nick})];
+    if(AUTH.db){
+      jobs.push(AUTH.db.collection('users').doc(u.uid).set({
+        studentId:sid, name:nm, nickname:nick, email:em, birth:birth,
+        createdAt:firebase.firestore.FieldValue.serverTimestamp()
+      }).catch(function(err){ console.warn('個人資料未寫入雲端：',err&&err.code) }));
+    }
+    return Promise.all(jobs).then(function(){
+      return authWithFallback(function(s){ return u.sendEmailVerification(s) });
+    }).then(function(){ return u });
+  }).then(function(u){
+    authBusy(b,false);
+    ['rgPw','rgPw2'].forEach(function(id){ authEl(id).value='' });
+    authEl('vfEmail').textContent=u.email;
+    authShow('verify');
+    authSay('vfMsg','註冊成功，驗證信已寄出。',true);
+  }).catch(function(e){ authBusy(b,false); authSay('regMsg',authErr(e)) });
+};
+
+/* ---- 信箱驗證 ---- */
+authEl('vfDone').onclick=function(){
+  var u=AUTH.auth&&AUTH.auth.currentUser;
+  if(!u){ authShow('login'); return }
+  var b=this; authBusy(b,true,'確認中…');
+  u.reload().then(function(){
+    authBusy(b,false);
+    var cur=AUTH.auth.currentUser;
+    if(cur&&cur.emailVerified){ authEnter(cur) }
+    else authSay('vfMsg','還沒收到驗證完成的紀錄。請先點信中的連結，再按一次。');
+  }).catch(function(e){ authBusy(b,false); authSay('vfMsg',authErr(e)) });
+};
+var vfLast=0;
+authEl('vfResend').onclick=function(e){
+  e.preventDefault();
+  var u=AUTH.auth&&AUTH.auth.currentUser;
+  if(!u){ authShow('login'); return }
+  if(Date.now()-vfLast<60000){ authSay('vfMsg','請稍候一分鐘再重寄。'); return }
+  vfLast=Date.now();
+  authWithFallback(function(s){ return u.sendEmailVerification(s) })
+    .then(function(){ authSay('vfMsg','已重新寄出驗證信。',true) })
+    .catch(function(err){ authSay('vfMsg',authErr(err)) });
+};
+authEl('vfBack').onclick=function(e){
+  e.preventDefault();
+  if(AUTH.auth) AUTH.auth.signOut();
+  authShow('login');
+};
+
+/* ---- 忘記密碼 ---- */
+authEl('fgBtn').onclick=function(){
+  if(!AUTH.auth){ authSay('fgMsg','帳號系統尚未設定。'); return }
+  var em=authEl('fgEm').value.trim();
+  if(!em) return authSay('fgMsg','請輸入電子郵件。');
+  var b=this; authBusy(b,true,'寄送中…');
+  authWithFallback(function(s){ return AUTH.auth.sendPasswordResetEmail(em,s) }).then(function(){
+    authBusy(b,false);
+    /* 不透露這個信箱是否註冊過 */
+    authSay('fgMsg','如果這個信箱已經註冊，重設密碼的信已寄出，請到信箱查看（也請看看垃圾郵件匣）。',true);
+  }).catch(function(e){
+    authBusy(b,false);
+    if(e&&e.code==='auth/user-not-found') authSay('fgMsg','如果這個信箱已經註冊，重設密碼的信已寄出，請到信箱查看（也請看看垃圾郵件匣）。',true);
+    else authSay('fgMsg',authErr(e));
+  });
+};
+authEl('fgEm').onkeydown=function(e){ if(e.key==='Enter') authEl('fgBtn').click() };
+
+/* ---- 已登入、訪客、切換畫面 ---- */
+authEl('sgEnter').onclick=function(){ if(AUTH.user) authEnter(AUTH.user) };
+authEl('sgOut').onclick=function(e){ e.preventDefault(); authSignOut() };
+authEl('guestBtn').onclick=function(){ AUTH.guest=true; authEnter(null) };
+document.querySelectorAll('[data-go]').forEach(function(a){
+  a.onclick=function(e){
+    e.preventDefault();
+    var v=a.dataset.go;
+    if(v==='forgot') authEl('fgEm').value=authEl('em').value;
+    authShow(v);
+    var first=document.querySelector('.auth-view[data-view="'+v+'"] input');
+    if(first) setTimeout(function(){ first.focus() },30);
+  };
+});
+authEl('t-enter2').onclick=function(e){ e.preventDefault(); openGate() };
+
+function authSignOut(){
+  stopSpeak();
+  try{ localStorage.removeItem('sommUser') }catch(e){}
+  AUTH.guest=false;
+  app.classList.remove('on'); teacherEl.classList.remove('on');
+  login.style.display='flex';
+  if(AUTH.auth) AUTH.auth.signOut(); else authShow('login');
+}
+function goHome(){
+  stopSpeak();
+  app.classList.remove('on'); teacherEl.classList.remove('on');
+  login.style.display='flex';
+  if(AUTH.user&&AUTH.user.emailVerified){
+    authEl('sgName').textContent=authDisplayName(AUTH.user);
+    authEl('sgEmail').textContent=AUTH.user.email;
+    authShow('signed');
+  }else authShow('login');
+  window.scrollTo(0,0);
+}
+authEl('backbtn').onclick=authSignOut;
+authEl('t-home').onclick=goHome;
+
+authInit();
 
 </script>
 </body>
