@@ -284,6 +284,8 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
 .ch-conv b{font-weight:500;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ch-conv span{font-size:11px;color:var(--ink-faint)}
 .ch-conv.on{border-color:var(--wine);background:var(--wine-tint)}
+.rec-sum{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0;border-bottom:1px dashed var(--rule)}
+.rec-small{padding:3px 10px;font-size:12px}
 .ch-act{display:flex;gap:6px;flex-wrap:wrap}
 .ch-convbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:12.5px;color:var(--ink-soft)}
 .ch-convbar b{font-weight:500;word-break:break-all}
@@ -2741,6 +2743,8 @@ function paintRecords(){
   if(!box) return;
   var users=[];
   try{ users=JSON.parse(localStorage.getItem('sommUsers')||'[]') }catch(e){}
+  try{ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i);
+    if(k&&k.indexOf('sommQuiz_')===0&&users.indexOf(k.slice(9))<0) users.push(k.slice(9)) } }catch(e){}
   var rows=[];
   users.forEach(function(u){
     var h=[];
@@ -2753,16 +2757,50 @@ function paintRecords(){
   rows.forEach(function(r){ per[r.u]=per[r.u]||{n:0,s:0,best:0}; per[r.u].n++; per[r.u].s+=r.score; per[r.u].best=Math.max(per[r.u].best,r.score) });
   var h='<div class="t-up"><b style="font-weight:500">摘要</b><div style="margin-top:8px;font-size:13px;line-height:2">';
   Object.keys(per).forEach(function(u){
-    h+=htmlEsc(nickOf(u)||u)+'　作答 '+per[u].n+' 次　平均 '+(per[u].s/per[u].n).toFixed(1)+' 分　最佳 '+per[u].best+' 分<br>';
+    h+='<div class="rec-sum"><span>'+htmlEsc(nickOf(u)||u)+'　作答 '+per[u].n+' 次　平均 '+(per[u].s/per[u].n).toFixed(1)+' 分　最佳 '+per[u].best+' 分</span>'+
+       '<button class="t-btn warn rec-small" data-recu="'+htmlEsc(u)+'">清除此帳號紀錄</button></div>';
   });
-  h+='</div><div class="t-uprow" style="margin-top:10px"><button class="t-btn alt" id="reccsv">匯出 CSV</button></div></div>';
+  h+='</div><div class="t-uprow" style="margin-top:10px"><button class="t-btn alt" id="reccsv">匯出 CSV</button><button class="t-btn warn" id="recclr">清空全部作答紀錄</button></div></div>';
   rows.slice(0,60).forEach(function(r){
     var d=new Date(r.at);
     h+='<div class="doc"><div class="dn">'+htmlEsc(nickOf(r.u)||r.u)+
        '<div class="dm">'+d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+'</div></div>'+
-       '<div style="font-size:16px;font-weight:500;color:var(--wine)">'+r.score+' / '+r.total+'</div></div>';
+       '<div style="display:flex;align-items:center;gap:10px"><div style="font-size:16px;font-weight:500;color:var(--wine)">'+r.score+' / '+r.total+'</div>'+
+       '<button class="t-btn warn rec-small" data-recdel="'+htmlEsc(r.u)+'|'+r.at+'" title="刪除這筆">刪除</button></div></div>';
   });
+  if(rows.length>60) h+='<p class="t-empty">只列出最近 60 筆，完整資料請匯出 CSV。</p>';
   box.innerHTML=h;
+  function recLabel(r){ var d=new Date(r.at); return (nickOf(r.u)||r.u)+' '+d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+'（'+r.score+' / '+r.total+'）' }
+  function wipe(users,keepFn){
+    users.forEach(function(u){
+      var list=[]; try{ list=JSON.parse(localStorage.getItem('sommQuiz_'+u)||'[]') }catch(e){}
+      list=keepFn?list.filter(function(r){ return keepFn(u,r) }):[];
+      try{ if(list.length) localStorage.setItem('sommQuiz_'+u,JSON.stringify(list)); else localStorage.removeItem('sommQuiz_'+u) }catch(e){}
+    });
+    paintRecords();
+  }
+  box.querySelectorAll('[data-recdel]').forEach(function(b){
+    b.onclick=function(){
+      var i=b.dataset.recdel.lastIndexOf('|'), u=b.dataset.recdel.slice(0,i), at=+b.dataset.recdel.slice(i+1);
+      var r=rows.filter(function(x){ return x.u===u&&x.at===at })[0]; if(!r) return;
+      pwConfirm('刪除這筆作答紀錄','會刪除「'+recLabel(r)+'」這一筆測驗紀錄，無法復原。').then(function(ok){
+        if(!ok) return; wipe([u],function(uu,x){ return x.at!==at }); toast('已刪除這筆作答紀錄');
+      });
+    };
+  });
+  box.querySelectorAll('[data-recu]').forEach(function(b){
+    b.onclick=function(){
+      var u=b.dataset.recu;
+      pwConfirm('清除此帳號的作答紀錄','會刪除「'+(nickOf(u)||u)+'」在這台裝置的全部 '+per[u].n+' 筆測驗紀錄，無法復原。').then(function(ok){
+        if(!ok) return; wipe([u]); toast('已清除「'+(nickOf(u)||u)+'」的作答紀錄');
+      });
+    };
+  });
+  document.getElementById('recclr').onclick=function(){
+    pwConfirm('清空全部作答紀錄','會刪除這台裝置上全部 '+rows.length+' 筆測驗紀錄，無法復原。').then(function(ok){
+      if(!ok) return; wipe(Object.keys(per)); toast('已清空全部作答紀錄');
+    });
+  };
   var b=document.getElementById('reccsv');
   if(b) b.onclick=function(){
     var csv='玩家帳號,電子郵件,時間,分數,總題數\n';
