@@ -261,6 +261,32 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
 .qz-wrong{margin-top:9px;line-height:1.8}
 .qz-wrong span{font-size:12px;color:var(--ink-faint)}
 .qz-act{display:flex;gap:8px;justify-content:center}
+.hist-clear{width:100%;margin:14px 0 4px;padding:7px 11px;background:none;border:1px solid var(--rule);border-radius:3px;font-size:12.5px;color:var(--ink-faint);text-align:left}
+.hist-clear:hover{border-color:#D9534F;color:#D9534F}
+.gate-act .go.danger{background:#B3403F;border-color:#B3403F;color:#fff}
+.ch-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.ch-bar input{flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--rule);border-radius:3px;background:var(--surface-2);color:var(--ink);font-size:13.5px}
+.ch-bar input:focus{border-color:var(--wine);outline:none;box-shadow:0 0 0 3px var(--wine-tint)}
+.ch-meta{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--ink-faint);margin-bottom:12px;flex-wrap:wrap}
+.ch-wrap{display:grid;grid-template-columns:240px minmax(0,1fr);gap:14px;align-items:start}
+.ch-students{display:flex;flex-direction:column;gap:6px;max-height:70vh;overflow-y:auto}
+.ch-stu{text-align:left;background:var(--surface);border:1px solid var(--rule);border-radius:3px;padding:9px 12px;display:flex;flex-direction:column;gap:2px}
+.ch-stu b{font-weight:500;font-size:13.5px;word-break:break-all}
+.ch-stu span{font-size:11.5px;color:var(--ink-faint)}
+.ch-stu:hover{border-color:var(--wine)}
+.ch-stu.on{border-color:var(--wine);background:var(--wine-tint)}
+.ch-view{min-width:0}
+.ch-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--rule);border-radius:3px;padding:10px 14px;margin-bottom:10px}
+.ch-head b{font-weight:500;font-size:15px;display:block;word-break:break-all}
+.ch-head span{font-size:12px;color:var(--ink-faint)}
+.ch-convs{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;scrollbar-width:thin}
+.ch-conv{flex:0 0 auto;max-width:220px;text-align:left;background:var(--surface-2);border:1px solid var(--rule);border-radius:3px;padding:7px 11px;display:flex;flex-direction:column;gap:2px}
+.ch-conv b{font-weight:500;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch-conv span{font-size:11px;color:var(--ink-faint)}
+.ch-conv.on{border-color:var(--wine);background:var(--wine-tint)}
+.ch-screen{background:var(--paper);border:1px solid var(--rule);border-radius:4px;padding:18px 16px;max-height:62vh;overflow-y:auto}
+.ch-screen .msg{max-width:none}
+@media (max-width:820px){.ch-wrap{grid-template-columns:1fr}.ch-students{max-height:none;flex-direction:row;overflow-x:auto}.ch-stu{flex:0 0 200px}}
 /* 教材段落彈窗 */
 .pop{position:fixed;inset:0;background:rgba(12,9,15,.72);display:none;align-items:center;justify-content:center;z-index:90;padding:20px}
 .pop.on{display:flex}
@@ -529,6 +555,7 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
       <button class="t-tab on" data-t="gaps">待回答問題 <b id="gapcount">0</b></button>
       <button class="t-tab" data-t="docs">教材管理 <b id="doccount">0</b></button>
       <button class="t-tab" data-t="test">檢索測試</button>
+      <button class="t-tab" data-t="chats">問答紀錄</button>
       <button class="t-tab" data-t="rec">學習紀錄</button>
     </div>
     <button class="chip themetog-in" aria-label="切換色系">淺色</button>
@@ -542,8 +569,22 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
       <div id="gaplist"></div>
     </section>
 
+    <section class="t-pane" id="pane-chats">
+      <p class="t-hint">每位學生登入後與 AI 的問答，都會同步保存在雲端。點選學生，再點選對話，就能看到當時的完整畫面，教材出處也可以點開。讀取全班紀錄需以<b>老師帳號</b>登入網站。</p>
+      <div class="ch-bar">
+        <input type="text" id="chFind" placeholder="搜尋玩家帳號、學號、姓名或信箱">
+        <button class="t-btn alt" id="chReload">重新整理</button>
+        <button class="t-btn warn" id="chDelAll">清空全部紀錄</button>
+      </div>
+      <div class="ch-meta"><span id="chWho"></span><span id="chCount"></span></div>
+      <div class="ch-wrap">
+        <div class="ch-students" id="chStudents"></div>
+        <div class="ch-view" id="chView"></div>
+      </div>
+    </section>
+
     <section class="t-pane" id="pane-rec">
-      <p class="t-hint">這裡只看得到<b>這台裝置</b>的測驗紀錄。學生在自己的手機或電腦作答，成績留在他們的瀏覽器，老師這邊讀不到。要集中管理全班成績需要後端。</p>
+      <p class="t-hint">這裡只看得到<b>這台裝置</b>的測驗紀錄，並以玩家帳號顯示。學生在自己的手機或電腦作答，成績留在他們的瀏覽器，老師這邊讀不到。要集中管理全班成績需要後端。</p>
       <div id="reclist"></div>
     </section>
 
@@ -605,7 +646,8 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
     <button class="newchat" id="newchat">＋ 新對話</button>
     <h2>歷史對話</h2>
     <ul id="convlist"></ul>
-    <p class="hint">對話紀錄存在這台裝置的瀏覽器，換裝置看不到。按 × 會從列表移除。</p>
+    <button class="hist-clear" id="histClear">清空紀錄</button>
+    <p class="hint">按 × 只從這台裝置的列表移除。登入帳號的問答會同步保存到雲端，供任課老師查閱。</p>
   </aside>
 
   <main class="col chat" id="chatcol">
@@ -2707,20 +2749,20 @@ function paintRecords(){
   rows.forEach(function(r){ per[r.u]=per[r.u]||{n:0,s:0,best:0}; per[r.u].n++; per[r.u].s+=r.score; per[r.u].best=Math.max(per[r.u].best,r.score) });
   var h='<div class="t-up"><b style="font-weight:500">摘要</b><div style="margin-top:8px;font-size:13px;line-height:2">';
   Object.keys(per).forEach(function(u){
-    h+=htmlEsc(u)+'　作答 '+per[u].n+' 次　平均 '+(per[u].s/per[u].n).toFixed(1)+' 分　最佳 '+per[u].best+' 分<br>';
+    h+=htmlEsc(nickOf(u)||u)+'　作答 '+per[u].n+' 次　平均 '+(per[u].s/per[u].n).toFixed(1)+' 分　最佳 '+per[u].best+' 分<br>';
   });
   h+='</div><div class="t-uprow" style="margin-top:10px"><button class="t-btn alt" id="reccsv">匯出 CSV</button></div></div>';
   rows.slice(0,60).forEach(function(r){
     var d=new Date(r.at);
-    h+='<div class="doc"><div class="dn">'+htmlEsc(r.u)+
+    h+='<div class="doc"><div class="dn">'+htmlEsc(nickOf(r.u)||r.u)+
        '<div class="dm">'+d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+'</div></div>'+
        '<div style="font-size:16px;font-weight:500;color:var(--wine)">'+r.score+' / '+r.total+'</div></div>';
   });
   box.innerHTML=h;
   var b=document.getElementById('reccsv');
   if(b) b.onclick=function(){
-    var csv='帳號,時間,分數,總題數\n';
-    rows.forEach(function(r){ csv+='"'+r.u+'","'+new Date(r.at).toLocaleString()+'",'+r.score+','+r.total+'\n' });
+    var csv='玩家帳號,電子郵件,時間,分數,總題數\n';
+    rows.forEach(function(r){ csv+='"'+(nickOf(r.u)||'')+'","'+r.u+'","'+new Date(r.at).toLocaleString()+'",'+r.score+','+r.total+'\n' });
     var blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='quiz-records.csv';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -2968,6 +3010,287 @@ authEl('backbtn').onclick=authSignOut;
 authEl('t-home').onclick=goHome;
 
 authInit();
+
+</script>
+<script>
+/* ==================================================================
+   玩家身分、雲端問答紀錄、教師後台查詢、清空紀錄
+   雲端結構：chats/{uid}            學生資料與最後更新時間
+            chats/{uid}/convs/{id} 一段對話的完整內容
+   ================================================================== */
+var ME={uid:null,email:'',nick:'',sid:'',name:''};
+
+function meLabel(){ return ME.nick||ME.email||'你' }
+function nickOf(email){
+  try{ return localStorage.getItem('sommNick_'+email)||'' }catch(e){ return '' }
+}
+function paintMe(){
+  var w=document.getElementById('whoami'); if(w) w.textContent=ME.uid?meLabel():'訪客';
+  var s=document.getElementById('sgName'); if(s&&ME.uid) s.textContent=meLabel();
+  document.querySelectorAll('#wrap .msg.you .lbl').forEach(function(l){ l.textContent=ME.uid?meLabel():'你' });
+}
+/* 讀取個人資料：先用帳號上的玩家帳號，再以資料庫補上學號、姓名 */
+function loadProfile(u){
+  ME={uid:u.uid,email:u.email,nick:u.displayName||'',sid:'',name:''};
+  if(!ME.nick){ var cached=nickOf(u.email); if(cached) ME.nick=cached }
+  paintMe();
+  var req=null;
+  try{ if(AUTH.db) req=AUTH.db.collection('users').doc(u.uid).get() }catch(e){ req=null }
+  if(!req||typeof req.then!=='function'){ if(!ME.nick) ME.nick=u.email.split('@')[0]; paintMe(); return Promise.resolve(ME) }
+  return req.then(function(d){
+    if(d.exists){
+      var p=d.data()||{};
+      ME.sid=p.studentId||''; ME.name=p.name||'';
+      if(p.nickname) ME.nick=p.nickname;
+    }
+    if(!ME.nick) ME.nick=u.email.split('@')[0];
+    try{ localStorage.setItem('sommNick_'+u.email,ME.nick) }catch(e){}
+    paintMe();
+    return ME;
+  }).catch(function(){ if(!ME.nick) ME.nick=u.email.split('@')[0]; paintMe(); return ME });
+}
+
+/* 進入問答時帶入身分 */
+var _authEnter=authEnter;
+authEnter=function(u){
+  if(u) loadProfile(u); else ME={uid:null,email:'',nick:'',sid:'',name:''};
+  _authEnter(u);
+  paintMe();
+};
+/* 已登入首頁也顯示玩家帳號 */
+if(AUTH.auth) AUTH.auth.onAuthStateChanged(function(u){
+  if(u&&u.emailVerified) loadProfile(u);
+  else if(!u) ME={uid:null,email:'',nick:'',sid:'',name:''};
+});
+
+/* 自己的發言標示玩家帳號 */
+function addYou(t){
+  var d=document.createElement('div'); d.className='msg you';
+  d.innerHTML='<div class="lbl"></div><div class="bub"></div>';
+  d.querySelector('.lbl').textContent=ME.uid?meLabel():'你';
+  d.querySelector('.bub').textContent=t; wrap.appendChild(d); scrollEnd();
+}
+
+/* ---- 同步到雲端 ---- */
+function cloudReady(){ return !!(AUTH.db&&AUTH.auth&&AUTH.auth.currentUser&&AUTH.auth.currentUser.emailVerified&&ME.uid) }
+function cleanForCloud(c){
+  return {
+    id:c.id, title:c.title||'', at:c.at||Date.now(), updatedMs:Date.now(),
+    updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+    count:(c.msgs||[]).filter(function(m){return m.r==='you'}).length,
+    msgs:(c.msgs||[]).map(function(m){
+      if(m.r==='you') return {r:'you',t:String(m.t||'')};
+      return {r:'ai',h:String(m.h||''),s:(m.s||[]).map(function(x){
+        return {k:String(x.k||''),t:String(x.t||''),loc:String(x.loc||''),ex:String(x.ex||''),q:String(x.q||'')};
+      })};
+    })
+  };
+}
+function cloudSaveConv(c){
+  if(!cloudReady()||!c) return;
+  var uid=ME.uid, ref;
+  try{ ref=AUTH.db.collection('chats').doc(uid) }catch(e){ return }
+  ref.set({uid:uid,email:ME.email,nickname:ME.nick||'',studentId:ME.sid||'',name:ME.name||'',
+           updatedMs:Date.now(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})
+    .then(function(){ return ref.collection('convs').doc(c.id).set(cleanForCloud(c)) })
+    .catch(function(e){ console.warn('問答紀錄未存到雲端：',e&&e.code) });
+}
+var _convPush=convPush;
+convPush=function(role,payload){
+  _convPush(role,payload);
+  try{ cloudSaveConv(convCurrent()) }catch(e){}
+};
+
+/* ==================================================================
+   教師密碼確認視窗（清空紀錄前使用）
+   ================================================================== */
+var PWC=null;
+function pwConfirm(title,desc){
+  if(!PWC){
+    PWC=document.createElement('div');
+    PWC.className='gate'; PWC.id='pwc';
+    PWC.innerHTML='<div class="gate-box" role="dialog" aria-modal="true" aria-labelledby="pwcT">'+
+      '<h3 id="pwcT"></h3><p id="pwcD"></p>'+
+      '<input type="password" id="pwcIn" inputmode="numeric" autocomplete="off" placeholder="教師密碼">'+
+      '<p class="gate-err" id="pwcErr"></p>'+
+      '<div class="gate-act"><button class="no" id="pwcNo">取消</button><button class="go danger" id="pwcOk">確認刪除</button></div></div>';
+    document.body.appendChild(PWC);
+  }
+  document.getElementById('pwcT').textContent=title;
+  document.getElementById('pwcD').textContent=desc;
+  document.getElementById('pwcErr').textContent='';
+  var inp=document.getElementById('pwcIn'); inp.value='';
+  PWC.classList.add('on'); setTimeout(function(){ inp.focus() },50);
+  return new Promise(function(resolve){
+    var fails=0;
+    function close(v){ PWC.classList.remove('on'); resolve(v) }
+    async function ok(){
+      if(Date.now()<gateLockUntil){ document.getElementById('pwcErr').textContent='嘗試過於頻繁，請稍候再試。'; return }
+      var h=await sha256hex(PW_SALT+inp.value);
+      if(h===PW_HASH){ close(true); return }
+      fails++; inp.value='';
+      if(fails>=5){ gateLockUntil=Date.now()+30000; document.getElementById('pwcErr').textContent='錯誤次數過多，暫停 30 秒。'; return }
+      document.getElementById('pwcErr').textContent='教師密碼不正確。';
+    }
+    document.getElementById('pwcOk').onclick=ok;
+    document.getElementById('pwcNo').onclick=function(){ close(false) };
+    inp.onkeydown=function(e){ if(e.key==='Enter') ok(); if(e.key==='Escape') close(false) };
+    PWC.onclick=function(e){ if(e.target===PWC) close(false) };
+  });
+}
+
+/* ---- 學生側欄：清空這台裝置的紀錄 ---- */
+document.getElementById('histClear').onclick=function(){
+  if(busy) return;
+  pwConfirm('清空對話紀錄','會刪除這個帳號在這台裝置上的所有對話紀錄，需要教師密碼確認。').then(function(ok){
+    if(!ok) return;
+    try{ localStorage.removeItem(convKeyAll()) }catch(e){}
+    CONV.id=null; welcome(false); paintConv();
+    toast(ME.uid?'已清空這台裝置的紀錄。雲端的問答紀錄由老師在後台管理。':'已清空這台裝置的紀錄。');
+  });
+};
+
+/* ==================================================================
+   教師後台：問答紀錄
+   ================================================================== */
+var TCH={students:[],sel:null,convs:[],cur:null};
+function tsMs(x,ms){ if(x&&x.toMillis) return x.toMillis(); return ms||0 }
+function fmtT(ms){
+  if(!ms) return '';
+  var d=new Date(ms);
+  return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+}
+function chatsMsg(html){ document.getElementById('chStudents').innerHTML='<p class="t-empty">'+html+'</p>'; document.getElementById('chView').innerHTML='' }
+function paintChats(){
+  if(!AUTH.db){ chatsMsg('帳號系統尚未設定，無法讀取雲端紀錄。'); return }
+  var u=AUTH.auth&&AUTH.auth.currentUser;
+  var who=document.getElementById('chWho');
+  if(!u){ who.textContent=''; chatsMsg('請先回首頁，用<b>老師的帳號</b>登入網站，再回到這裡。<br>老師帳號需列在資料庫規則的管理者名單中，設定方式見 SETUP-ACCOUNTS.md。'); return }
+  who.textContent='目前登入：'+u.email;
+  chatsMsg('讀取中…');
+  AUTH.db.collection('chats').orderBy('updatedMs','desc').limit(500).get().then(function(snap){
+    TCH.students=snap.docs.map(function(d){ var x=d.data()||{}; x.uid=d.id; return x });
+    renderStudents();
+  }).catch(function(e){
+    if(e&&e.code==='permission-denied') chatsMsg('<b>'+htmlEsc(u.email)+'</b> 沒有讀取全班紀錄的權限。<br>請在 Firestore 規則的管理者名單加入這個信箱，或改用已列入名單的老師帳號登入。');
+    else chatsMsg('讀取失敗：'+htmlEsc((e&&e.code)||String(e)));
+  });
+}
+function renderStudents(){
+  var box=document.getElementById('chStudents');
+  var kw=(document.getElementById('chFind').value||'').trim().toLowerCase();
+  var list=TCH.students.filter(function(s){
+    if(!kw) return true;
+    return [s.nickname,s.studentId,s.name,s.email].join(' ').toLowerCase().indexOf(kw)>=0;
+  });
+  document.getElementById('chCount').textContent=TCH.students.length+' 位學生';
+  if(!list.length){ box.innerHTML='<p class="t-empty">'+(TCH.students.length?'沒有符合的學生。':'還沒有任何學生的問答紀錄。')+'</p>'; return }
+  box.innerHTML=list.map(function(s){
+    return '<button class="ch-stu'+(TCH.sel===s.uid?' on':'')+'" data-uid="'+htmlEsc(s.uid)+'">'+
+      '<b>'+htmlEsc(s.nickname||s.email||'未命名')+'</b>'+
+      '<span>'+htmlEsc([s.studentId,s.name].filter(Boolean).join('　')||s.email||'')+'</span>'+
+      '<span>最後提問 '+fmtT(tsMs(s.updatedAt,s.updatedMs))+'</span></button>';
+  }).join('');
+  box.querySelectorAll('.ch-stu').forEach(function(b){ b.onclick=function(){ openStudent(b.dataset.uid) } });
+}
+function openStudent(uid){
+  TCH.sel=uid; TCH.cur=null; renderStudents();
+  var s=TCH.students.filter(function(x){return x.uid===uid})[0]||{};
+  var v=document.getElementById('chView');
+  v.innerHTML='<p class="t-empty">讀取中…</p>';
+  AUTH.db.collection('chats').doc(uid).collection('convs').orderBy('updatedMs','desc').limit(200).get().then(function(snap){
+    TCH.convs=snap.docs.map(function(d){ var x=d.data()||{}; x.id=d.id; return x });
+    var h='<div class="ch-head"><div><b>'+htmlEsc(s.nickname||s.email||'')+'</b><span>'+htmlEsc([s.studentId,s.name,s.email].filter(Boolean).join('　'))+'</span></div>'+
+          '<button class="t-btn warn" id="chDelOne">清空此學生紀錄</button></div>';
+    if(!TCH.convs.length) h+='<p class="t-empty">這位學生沒有問答紀錄。</p>';
+    else h+='<div class="ch-convs">'+TCH.convs.map(function(c){
+      return '<button class="ch-conv" data-id="'+htmlEsc(c.id)+'"><b>'+htmlEsc(c.title||'未命名對話')+'</b><span>'+fmtT(tsMs(c.updatedAt,c.updatedMs))+'　'+(c.count||0)+' 個問題</span></button>';
+    }).join('')+'</div><div class="ch-screen" id="chScreen"><p class="t-empty">點選上方的對話查看畫面紀錄。</p></div>';
+    v.innerHTML=h;
+    v.querySelectorAll('.ch-conv').forEach(function(b){ b.onclick=function(){ openConv(b.dataset.id) } });
+    document.getElementById('chDelOne').onclick=function(){ clearStudent(uid,s.nickname||s.email) };
+    if(TCH.convs.length) openConv(TCH.convs[0].id);
+  }).catch(function(e){ v.innerHTML='<p class="t-empty">讀取失敗：'+htmlEsc((e&&e.code)||String(e))+'</p>' });
+}
+/* 學生端存進來的 HTML 只保留安全的標籤，避免有人改寫雲端資料夾帶程式 */
+function safeHtml(h){
+  var tpl=document.createElement('template'); tpl.innerHTML=String(h||'');
+  var OK={P:1,OL:1,UL:1,LI:1,STRONG:1,B:1,EM:1,SUP:1,SPAN:1,A:1,BR:1,DIV:1};
+  (function walk(n){
+    Array.prototype.slice.call(n.childNodes).forEach(function(c){
+      if(c.nodeType===3) return;
+      if(c.nodeType!==1||!OK[c.tagName]){ n.replaceChild(document.createTextNode(c.textContent||''),c); return }
+      Array.prototype.slice.call(c.attributes).forEach(function(a){
+        var keep=(a.name==='class')||(a.name==='data-s'&&c.tagName==='SUP')||
+                 (a.name==='href'&&c.tagName==='A'&&/^https?:\/\//i.test(a.value))||
+                 (c.tagName==='A'&&(a.name==='target'||a.name==='rel'));
+        if(!keep) c.removeAttribute(a.name);
+      });
+      if(c.tagName==='A'){ c.setAttribute('target','_blank'); c.setAttribute('rel','noopener noreferrer') }
+      walk(c);
+    });
+  })(tpl.content);
+  return tpl.innerHTML;
+}
+function openConv(id){
+  var c=TCH.convs.filter(function(x){return x.id===id})[0]; if(!c) return;
+  TCH.cur=id;
+  document.querySelectorAll('.ch-conv').forEach(function(b){ b.classList.toggle('on',b.dataset.id===id) });
+  var s=TCH.students.filter(function(x){return x.uid===TCH.sel})[0]||{};
+  var scr=document.getElementById('chScreen'); scr.innerHTML='';
+  (c.msgs||[]).forEach(function(m){
+    var d=document.createElement('div');
+    if(m.r==='you'){
+      d.className='msg you';
+      d.innerHTML='<div class="lbl"></div><div class="bub"></div>';
+      d.querySelector('.lbl').textContent=s.nickname||s.email||'學生';
+      d.querySelector('.bub').textContent=m.t||'';
+    }else{
+      (m.s||[]).forEach(function(x){ if(x.k) DOCS[x.k]={t:x.t,loc:x.loc,ex:x.ex,q:x.q} });
+      d.className='msg ai';
+      d.innerHTML='<div class="lbl">AI侍酒師問答庫</div><div class="bub">'+safeHtml(m.h)+'</div>';
+      bindCites(d.querySelector('.bub'));
+    }
+    scr.appendChild(d);
+  });
+  if(!scr.children.length) scr.innerHTML='<p class="t-empty">這段對話沒有內容。</p>';
+}
+
+/* ---- 刪除雲端紀錄 ---- */
+function deleteStudentCloud(uid){
+  var ref=AUTH.db.collection('chats').doc(uid);
+  return ref.collection('convs').get().then(function(snap){
+    var chunks=[], docs=snap.docs;
+    for(var i=0;i<docs.length;i+=400) chunks.push(docs.slice(i,i+400));
+    return chunks.reduce(function(p,ch){
+      return p.then(function(){ var b=AUTH.db.batch(); ch.forEach(function(d){ b.delete(d.ref) }); return b.commit() });
+    },Promise.resolve());
+  }).then(function(){ return ref.delete() });
+}
+function clearStudent(uid,label){
+  pwConfirm('清空學生紀錄','會永久刪除「'+label+'」在雲端的所有問答紀錄，無法復原。').then(function(ok){
+    if(!ok) return;
+    toast('刪除中…');
+    deleteStudentCloud(uid).then(function(){
+      toast('已刪除「'+label+'」的問答紀錄');
+      TCH.sel=null; document.getElementById('chView').innerHTML=''; paintChats();
+    }).catch(function(e){ toast('刪除失敗：'+((e&&e.code)||e)) });
+  });
+}
+document.getElementById('chDelAll').onclick=function(){
+  if(!TCH.students.length){ toast('目前沒有可刪除的紀錄'); return }
+  pwConfirm('清空全部問答紀錄','會永久刪除全部 '+TCH.students.length+' 位學生在雲端的問答紀錄，無法復原。').then(function(ok){
+    if(!ok) return;
+    toast('刪除中…');
+    TCH.students.reduce(function(p,s){ return p.then(function(){ return deleteStudentCloud(s.uid) }) },Promise.resolve()).then(function(){
+      toast('已清空全部問答紀錄'); TCH.sel=null; document.getElementById('chView').innerHTML=''; paintChats();
+    }).catch(function(e){ toast('刪除失敗：'+((e&&e.code)||e)); paintChats() });
+  });
+};
+document.getElementById('chReload').onclick=paintChats;
+document.getElementById('chFind').oninput=renderStudents;
+document.querySelector('.t-tab[data-t="chats"]').addEventListener('click',paintChats);
+
 
 </script>
 </body>
