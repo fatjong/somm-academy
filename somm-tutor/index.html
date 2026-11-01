@@ -289,12 +289,28 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
 .ch-conv span{font-size:11px;color:var(--ink-faint)}
 .ch-conv.on{border-color:var(--wine);background:var(--wine-tint)}
 .rec-sum{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0;border-bottom:1px dashed var(--rule)}
+.rec-row{cursor:pointer}
+.rec-row:hover,.rec-row.open{border-color:var(--wine)}
+.rec-score{font-size:16px;font-weight:500;color:var(--wine);white-space:nowrap}
+.rec-score span{font-size:11.5px;font-weight:400;color:var(--ink-faint);margin-left:4px}
+.rec-det{background:var(--surface-2);border:1px solid var(--rule);border-top:none;border-radius:0 0 3px 3px;margin:-11px 0 10px;padding:12px 16px}
+.rec-qs{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:10px}
+.rec-qs li{font-size:13.5px;line-height:1.7}
+.rec-qs li::marker{color:var(--ink-faint)}
+.rq-q{color:var(--ink)}
+.rq-tag{display:inline-block;font-size:11px;color:var(--ink-faint);border:1px solid var(--rule);border-radius:999px;padding:0 7px;margin-right:6px}
+.rq-a{font-size:12.5px;color:var(--ink-soft)}
+.rq-a b{font-weight:500;color:var(--ink)}
+.rec-qs li.ok .rq-v{color:var(--ok)}
+.rec-qs li.no .rq-v{color:#D9534F}
+.rq-old{font-size:12px;color:var(--ink-faint);margin:10px 0 0}
 .rec-small{padding:3px 10px;font-size:12px}
 .ch-login{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:18px;display:flex;flex-direction:column;gap:10px;max-width:420px}
 .ch-login b{font-weight:500;font-size:15px}
 .ch-login input{padding:9px 12px;border:1px solid var(--rule);border-radius:3px;background:var(--surface-2);color:var(--ink);font-size:14px}
 .ch-login input:focus{border-color:var(--wine);outline:none;box-shadow:0 0 0 3px var(--wine-tint)}
 .ch-note{font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0}
+ol.ch-note{padding-left:1.3em}
 .ch-err{font-size:12.5px;color:#C0504D;margin:0;min-height:1em}
 .ch-act{display:flex;gap:6px;flex-wrap:wrap}
 .ch-convbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:12.5px;color:var(--ink-soft)}
@@ -2439,16 +2455,10 @@ if(rec){ rec.onresult=function(e){
 }; }
 
 /* ---- 教師密碼閘 ----
-   原始碼裡只留雜湊值，看程式碼看不到密碼本身。
-   但這是純前端驗證，安全性有限，說明見對話。 */
-var PW_SALT='somm-lhu-2026:';
-var PW_HASH='ee5c8a2a0ae98532eae01760dbed208c2e3e7c1f80b23f5918e47a793ed00229';
+   網頁原始碼裡沒有教師密碼，也沒有密碼的雜湊值。
+   輸入的密碼直接送到 Firebase，由資料庫規則比對，對了才開啟教師模式。 */
 var gateEl=document.getElementById('gate'), gateFails=0, gateLockUntil=0;
-var TCHPW='';   /* 這次輸入的教師密碼，只留在記憶體，用來登入老師帳號讀取雲端紀錄 */
-async function sha256hex(str){
-  var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
-  return Array.prototype.map.call(new Uint8Array(buf),function(b){return ('0'+b.toString(16)).slice(-2)}).join('');
-}
+var TCHPW='';   /* 驗證通過的教師密碼，只留在記憶體 */
 function openGate(){
   gateEl.classList.add('on');
   document.getElementById('gatepw').value='';
@@ -2456,7 +2466,7 @@ function openGate(){
   setTimeout(function(){ document.getElementById('gatepw').focus() },60);
 }
 function closeGate(){ gateEl.classList.remove('on') }
-async function tryGate(){
+function tryGate(){
   var err=document.getElementById('gateerr');
   var now=Date.now();
   if(now<gateLockUntil){
@@ -2465,15 +2475,16 @@ async function tryGate(){
   }
   var pw=document.getElementById('gatepw').value;
   if(!pw){ err.textContent='請輸入密碼。'; return }
-  var h=await sha256hex(PW_SALT+pw);
-  if(h===PW_HASH){
-    TCHPW=pw; gateFails=0; closeGate(); openTeacher();
-  }else{
+  if(typeof teacherVerify!=='function'){ err.textContent='系統尚未載入完成，請稍候再試。'; return }
+  var btn=document.getElementById('gateok'); btn.disabled=true; err.textContent='驗證中…';
+  teacherVerify(pw).then(function(ok){
+    btn.disabled=false;
+    if(ok){ gateFails=0; err.textContent=''; closeGate(); openTeacher(); return }
     gateFails++;
     document.getElementById('gatepw').value='';
     if(gateFails>=5){ gateLockUntil=Date.now()+30000; gateFails=0; err.textContent='錯誤次數過多，暫停 30 秒。'; }
-    else err.textContent='密碼不正確。';
-  }
+    else err.textContent='密碼不正確。'+(gateFails>=2?'若確定沒有打錯，請確認 Firebase 資料庫規則已更新，並在規則裡填入教師密碼。':'');
+  }).catch(function(e){ btn.disabled=false; err.textContent=teacherErrMsg(e) });
 }
 document.getElementById('gateok').onclick=tryGate;
 document.getElementById('gateno').onclick=closeGate;
@@ -2576,7 +2587,7 @@ function renderQ(){
 function answerQ(i){
   var q=QUIZ.items[QUIZ.idx], right=(i===q.a);
   if(right) QUIZ.score++;
-  QUIZ.log.push({id:q.id,ok:right,l:q.l,c:q.c});
+  QUIZ.log.push({id:q.id,ok:right,l:q.l,c:q.c,pick:i,q:q.q,o:q.o,a:q.a,t:q.t});
   var opts=document.querySelectorAll('.qz-opt');
   opts.forEach(function(b,k){
     b.disabled=true;
@@ -2600,7 +2611,7 @@ function answerQ(i){
 }
 function finishQuiz(){
   var rec={at:Date.now(),user:currentUser(),score:QUIZ.score,total:10,
-           detail:QUIZ.log.map(function(x){return {id:x.id,ok:x.ok,l:x.l,c:x.c}})};
+           detail:QUIZ.log.map(function(x){return {id:x.id,ok:x.ok,l:x.l,c:x.c,pick:x.pick,q:x.q,o:x.o,a:x.a,t:x.t}})};
   quizSave(rec);
   var wrong=QUIZ.log.filter(function(x){return !x.ok}).length;
   var bycat={};
@@ -2770,6 +2781,24 @@ function paintConv(){
   });
 }
 
+/* 一次測驗的逐題作答：題目、學生的答案、對錯、正確答案 */
+function recDetail(r,bank){
+  var byId={}; bank.forEach(function(q){ byId[q.id]=q });
+  var lv=['','基礎','進階','挑戰'];
+  if(!r.detail||!r.detail.length) return '<p class="t-empty">這次測驗沒有逐題紀錄。</p>';
+  var old=false;
+  var h='<ol class="rec-qs">'+r.detail.map(function(x){
+    var q=byId[x.id]||{}, text=x.q||q.q||'（題目已從題庫移除）', o=x.o||q.o||[], a=(typeof x.a==='number')?x.a:q.a;
+    var pick=(typeof x.pick==='number')?x.pick:(x.ok?a:null);
+    if(pick==null) old=true;
+    var ans=function(k){ return (k==null||!o[k])?'—':htmlEsc(cleanOut(o[k])) };
+    return '<li class="'+(x.ok?'ok':'no')+'"><div class="rq-q"><span class="rq-tag">'+(lv[x.l||q.l]||'')+'</span>'+htmlEsc(cleanOut(text))+'</div>'+
+      '<div class="rq-a">學生答案：<b>'+(pick==null?'未記錄':ans(pick))+'</b>　<span class="rq-v">'+(x.ok?'✓ 答對':'✗ 答錯')+'</span></div>'+
+      (x.ok?'':'<div class="rq-a">正確答案：<b>'+ans(a)+'</b></div>')+'</li>';
+  }).join('')+'</ol>';
+  if(old) h+='<p class="rq-old">這筆是舊版紀錄，當時沒有記下學生選的選項；之後的測驗都會完整記錄。</p>';
+  return h;
+}
 function paintRecords(){
   var box=document.getElementById('reclist');
   if(!box) return;
@@ -2797,9 +2826,9 @@ function paintRecords(){
   h+='</div><div class="t-uprow" style="margin-top:10px"><button class="t-btn alt" id="reccsv">匯出 CSV</button><button class="t-btn warn" id="recclr">清空全部作答紀錄</button></div></div>';
   rows.slice(0,60).forEach(function(r){
     var d=new Date(r.at);
-    h+='<div class="doc"><div class="dn">'+htmlEsc(nickOf(r.u)||r.u)+
+    h+='<div class="doc rec-row" data-rk="'+htmlEsc(r.u)+'|'+r.at+'" title="點一下查看每一題的作答"><div class="dn">'+htmlEsc(nickOf(r.u)||r.u)+
        '<div class="dm">'+d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+'</div></div>'+
-       '<div style="display:flex;align-items:center;gap:10px"><div style="font-size:16px;font-weight:500;color:var(--wine)">'+r.score+' / '+r.total+'</div>'+
+       '<div style="display:flex;align-items:center;gap:10px"><div class="rec-score">'+r.score+' / '+r.total+' <span>▾ 查看作答</span></div>'+
        '<button class="t-btn warn rec-small" data-recdel="'+htmlEsc(r.u)+'|'+r.at+'" title="刪除這筆">刪除</button></div></div>';
   });
   if(rows.length>60) h+='<p class="t-empty">只列出最近 60 筆，完整資料請匯出 CSV。</p>';
@@ -2813,6 +2842,18 @@ function paintRecords(){
     });
     paintRecords();
   }
+  box.querySelectorAll('.rec-row').forEach(function(row){
+    row.onclick=function(e){
+      if(e.target.closest('[data-recdel]')) return;
+      var nx=row.nextElementSibling;
+      if(nx&&nx.classList.contains('rec-det')){ nx.remove(); row.classList.remove('open'); return }
+      var k=row.dataset.rk, i=k.lastIndexOf('|'), u=k.slice(0,i), at=+k.slice(i+1);
+      var r=rows.filter(function(x){ return x.u===u&&x.at===at })[0]; if(!r) return;
+      var det=document.createElement('div'); det.className='rec-det'; det.innerHTML='<p class="t-empty">讀取題目中…</p>';
+      row.after(det); row.classList.add('open');
+      loadBank(function(bank){ det.innerHTML=recDetail(r,bank||[]) });
+    };
+  });
   box.querySelectorAll('[data-recdel]').forEach(function(b){
     b.onclick=function(){
       var i=b.dataset.recdel.lastIndexOf('|'), u=b.dataset.recdel.slice(0,i), at=+b.dataset.recdel.slice(i+1);
@@ -3206,10 +3247,15 @@ function pwConfirm(title,desc){
   return new Promise(function(resolve){
     var fails=0;
     function close(v){ PWC.classList.remove('on'); resolve(v) }
-    async function ok(){
+    function ok(){
       if(Date.now()<gateLockUntil){ document.getElementById('pwcErr').textContent='嘗試過於頻繁，請稍候再試。'; return }
-      var h=await sha256hex(PW_SALT+inp.value);
-      if(h===PW_HASH){ close(true); return }
+      document.getElementById('pwcErr').textContent='驗證中…';
+      teacherVerify(inp.value).then(function(good){
+        if(good){ close(true); return }
+        bad();
+      }).catch(function(e){ document.getElementById('pwcErr').textContent=teacherErrMsg(e) });
+    }
+    function bad(){
       fails++; inp.value='';
       if(fails>=5){ gateLockUntil=Date.now()+30000; document.getElementById('pwcErr').textContent='錯誤次數過多，暫停 30 秒。'; return }
       document.getElementById('pwcErr').textContent='教師密碼不正確。';
@@ -3226,6 +3272,7 @@ document.getElementById('histClear').onclick=function(){
   if(busy) return;
   pwConfirm('清空對話紀錄','會刪除這個帳號在這台裝置上的所有對話紀錄，需要教師密碼確認。').then(function(ok){
     if(!ok) return;
+    if(!(teacherEl&&teacherEl.classList.contains('on'))&&typeof adminSignOut==='function') adminSignOut();
     try{ localStorage.removeItem(convKeyAll()) }catch(e){}
     CONV.id=null; welcome(false); paintConv();
     toast(ME.uid?'已清空這台裝置的紀錄。雲端的問答紀錄由老師在後台管理。':'已清空這台裝置的紀錄。');
@@ -3248,8 +3295,7 @@ function chatsMsg(html){ document.getElementById('chStudents').innerHTML='<p cla
    用另一個獨立的 Firebase 連線，不會把這台裝置上學生的登入狀態登出
    真正的權限仍由 Firebase 驗證密碼、Firestore 規則的管理者名單決定
    ------------------------------------------------------------------ */
-var TEACHER_ACCOUNT=(window.FIREBASE_CONFIG&&window.FIREBASE_CONFIG.teacherEmail)||'fatjong@gmail.com';
-var ADMIN={app:null,auth:null,db:null};
+var ADMIN={app:null,auth:null,db:null,ok:false,busy:false};
 function adminInit(){
   if(ADMIN.db) return true;
   if(!AUTH.db||!window.firebase||!window.FIREBASE_CONFIG) return false;
@@ -3258,35 +3304,78 @@ function adminInit(){
     ADMIN.app=a||firebase.initializeApp(window.FIREBASE_CONFIG,'teacher');
     ADMIN.auth=ADMIN.app.auth(); ADMIN.auth.languageCode='zh-TW';
     ADMIN.db=ADMIN.app.firestore();
-  }catch(e){ console.warn('老師帳號連線失敗：',e); ADMIN.db=null; return false }
+  }catch(e){ console.warn('教師連線失敗：',e); ADMIN.db=null; return false }
   return true;
 }
 function TDB(){ return ADMIN.db }
-function adminSignIn(){
+/* 教師連線：匿名登入一個獨立的連線，再把教師密碼交給資料庫規則比對。
+   密碼對了，規則才允許建立 admins/{uid}，之後這個連線才讀得到全班紀錄。
+   不需要任何電子郵件，也不會影響這台裝置上學生的登入。 */
+/* 教師密碼驗證：密碼送到資料庫規則比對（網頁裡沒有密碼）。
+   對了 → 規則允許寫入 admins/{uid}，這條連線取得老師權限，回傳 true；錯了 → false */
+function teacherVerify(pw){
+  if(!pw) return Promise.resolve(false);
+  if(!adminInit()) return Promise.reject({code:'no-config'});
+  ADMIN.busy=true;
   var u=ADMIN.auth.currentUser;
-  if(u&&u.email===TEACHER_ACCOUNT) return Promise.resolve(u);
-  if(!TCHPW) return Promise.reject({code:'need-password'});
-  return ADMIN.auth.signInWithEmailAndPassword(TEACHER_ACCOUNT,TCHPW).then(function(r){ return r.user||ADMIN.auth.currentUser });
+  var p=u?Promise.resolve(u):ADMIN.auth.signInAnonymously().then(function(r){ return (r&&r.user)||ADMIN.auth.currentUser });
+  return p.then(function(u){
+    return ADMIN.db.collection('admins').doc(u.uid).set({key:pw,at:firebase.firestore.FieldValue.serverTimestamp()})
+      .then(function(){ ADMIN.ok=true; TCHPW=pw; ADMIN.busy=false; return true },
+            function(e){ ADMIN.busy=false; if(e&&e.code==='permission-denied') return false; throw e });
+  },function(e){ ADMIN.busy=false; throw e });
 }
-function adminSignOut(){ try{ if(ADMIN.auth&&ADMIN.auth.currentUser) ADMIN.auth.signOut() }catch(e){} TCHPW='' }
+function teacherErrMsg(e){
+  var c=(e&&e.code)||'';
+  if(c==='no-config') return '帳號系統尚未設定，無法使用教師模式。';
+  if(/operation-not-allowed|admin-restricted-operation/.test(c)) return '尚未開啟匿名登入：Firebase 主控台 → Authentication →「登入方式」→ 匿名 → 啟用。';
+  if(/network|unavailable/.test(c)) return '網路連線失敗，請檢查網路後再試。';
+  if(/too-many-requests/.test(c)) return '嘗試次數過多，請過幾分鐘再試。';
+  return '驗證失敗：'+(c||String(e));
+}
+function adminSignIn(){
+  if(ADMIN.ok&&ADMIN.auth.currentUser) return Promise.resolve(ADMIN.auth.currentUser);
+  if(!TCHPW) return Promise.reject({code:'need-password'});
+  return teacherVerify(TCHPW).then(function(ok){ if(!ok) throw {code:'need-password'}; return ADMIN.auth.currentUser });
+}
+/* 網頁打開時，若上次的教師連線沒有正常登出，先清掉，避免別人在這台電腦接著用 */
+(function(){
+  if(!adminInit()) return;
+  var first=true;
+  ADMIN.auth.onAuthStateChanged(function(u){
+    if(!first) return; first=false;
+    if(u&&!ADMIN.ok&&!ADMIN.busy){
+      var off=function(){ if(!ADMIN.ok&&!ADMIN.busy) ADMIN.auth.signOut() };
+      ADMIN.db.collection('admins').doc(u.uid).delete().then(off,off);
+    }
+  });
+})();
+function adminSignOut(){
+  TCHPW='';
+  try{
+    var u=ADMIN.auth&&ADMIN.auth.currentUser; if(!u) return;
+    var done=function(){ ADMIN.ok=false; return ADMIN.auth.signOut() };
+    if(ADMIN.ok) ADMIN.db.collection('admins').doc(u.uid).delete().then(done,done); else done();
+  }catch(e){}
+}
 
 function paintChats(){
   var who=document.getElementById('chWho');
   if(!AUTH.db){ who.textContent=''; chatsMsg('帳號系統尚未設定，無法讀取雲端紀錄。'); return }
   if(!adminInit()){ chatsMsg('無法連線到雲端資料庫，請重新整理網頁再試。'); return }
-  who.textContent='老師帳號：'+TEACHER_ACCOUNT;
+  who.textContent='';
   chatsMsg('連線中…');
-  adminSignIn().then(function(u){
-    if(u&&u.emailVerified===false){ chatsSetup('unverified'); return }
+  adminSignIn().then(function(){
+    who.textContent='已用教師密碼連線';
     return TDB().collection('chats').orderBy('updatedMs','desc').limit(500).get().then(function(snap){
       TCH.students=snap.docs.map(function(d){ var x=d.data()||{}; x.uid=d.id; return x });
       renderStudents();
     });
   }).catch(function(e){
     var c=(e&&e.code)||'';
-    if(/invalid-credential|wrong-password|user-not-found|invalid-login-credentials/.test(c)) chatsSetup('password');
-    else if(c==='need-password') chatsSetup('relogin');
-    else if(c==='permission-denied') chatsSetup('rules');
+    if(c==='need-password') chatsSetup('relogin');
+    else if(/operation-not-allowed|admin-restricted-operation/.test(c)) chatsSetup('anon');
+    else if(/permission-denied/.test(c)) chatsSetup('rules');
     else if(/too-many-requests/.test(c)) chatsMsg('嘗試次數過多，請過幾分鐘再按「重新整理」。');
     else chatsMsg('讀取失敗：'+htmlEsc(c||String(e)));
   });
@@ -3295,38 +3384,29 @@ function paintChats(){
 function chatsSetup(kind){
   document.getElementById('chStudents').innerHTML='';
   document.getElementById('chCount').textContent='';
-  var em='<b>'+htmlEsc(TEACHER_ACCOUNT)+'</b>', h='';
-  if(kind==='password'){
-    h='<b>還差一個設定：讓老師帳號的密碼等於教師密碼</b>'+
-      '<p class="ch-note">網站會用老師帳號 '+em+' 讀取全班紀錄，登入密碼就是你剛剛輸入的教師密碼。目前兩者不同，所以還讀不到。</p>'+
-      '<p class="ch-note">按下面的按鈕，系統會寄一封重設密碼信到 '+em+'。打開信裡的連結，<b>把新密碼設成教師密碼</b>，再回來按「重新整理」。只需要做一次。</p>'+
-      '<p class="ch-note">如果這個信箱還沒在網站註冊，請先回首頁註冊並完成信箱驗證。</p>'+
-      '<p class="ch-err" id="chErr" role="alert"></p>'+
-      '<button class="t-btn" id="chReset">寄重設密碼信到老師信箱</button>';
-  }else if(kind==='unverified'){
-    h='<b>老師帳號還沒完成信箱驗證</b><p class="ch-note">請到 '+em+' 的信箱點驗證連結，再回來按「重新整理」。</p>';
+  var h='';
+  if(kind==='anon'){
+    h='<b>還差一個設定：開啟「匿名」登入方式</b>'+
+      '<p class="ch-note">用教師密碼讀取紀錄，需要在 Firebase 開啟匿名登入（只需要做一次）：</p>'+
+      '<ol class="ch-note"><li>開啟 Firebase 主控台 → 專案 ai-sommeliers-tutor</li><li>建構 → Authentication →「登入方式」分頁</li><li>新增供應商 →「匿名」→ 啟用 → 儲存</li></ol>'+
+      '<p class="ch-note">完成後回到這裡按「重新整理」。</p>';
   }else if(kind==='rules'){
-    h='<b>老師帳號沒有讀取權限</b><p class="ch-note">'+em+' 不在 Firestore 規則的管理者名單裡。請到 Firebase 主控台 → Firestore Database →「規則」，把這個信箱加進 isAdmin() 清單後按發布。</p>';
+    h='<b>還差一個設定：更新資料庫規則</b>'+
+      '<p class="ch-note">教師密碼正確，但資料庫還不讓這條連線讀取學生紀錄，表示規則還是舊版。</p>'+
+      '<ol class="ch-note"><li>開啟 Firebase 主控台 → Firestore Database →「規則」分頁</li><li>把整段內容換成新版 <code>firestore.rules</code> 的內容</li><li>按「發布」，等一分鐘後回到這裡按「重新整理」</li></ol>';
   }else{
     h='<b>請重新輸入教師密碼</b><p class="ch-note">為了保護學生資料，重新整理網頁後需要再輸入一次教師密碼。</p>'+
       '<input type="password" id="chPw" placeholder="教師密碼" autocomplete="off" inputmode="numeric"><p class="ch-err" id="chErr" role="alert"></p>'+
       '<button class="t-btn" id="chGo">讀取紀錄</button>';
   }
   var v=document.getElementById('chView'); v.innerHTML='<div class="ch-login">'+h+'</div>';
-  var r=document.getElementById('chReset');
-  if(r) r.onclick=function(){
-    r.disabled=true; r.textContent='寄送中…';
-    ADMIN.auth.sendPasswordResetEmail(TEACHER_ACCOUNT).then(function(){
-      r.textContent='已寄出，請查看信箱（也看一下垃圾郵件匣）';
-    }).catch(function(e){ r.disabled=false; r.textContent='寄重設密碼信到老師信箱';
-      document.getElementById('chErr').textContent=(typeof authErr==='function')?authErr(e):((e&&e.code)||String(e)) });
-  };
   var g=document.getElementById('chGo');
   if(g){
-    var go=async function(){
-      var pw=document.getElementById('chPw').value;
-      if(await sha256hex(PW_SALT+pw)!==PW_HASH){ document.getElementById('chErr').textContent='教師密碼不正確。'; return }
-      TCHPW=pw; paintChats();
+    var go=function(){
+      var pw=document.getElementById('chPw').value, er=document.getElementById('chErr');
+      er.textContent='驗證中…';
+      teacherVerify(pw).then(function(ok){ if(ok){ er.textContent=''; paintChats() } else er.textContent='教師密碼不正確。' })
+        .catch(function(e){ er.textContent=teacherErrMsg(e) });
     };
     g.onclick=go; document.getElementById('chPw').onkeydown=function(e){ if(e.key==='Enter') go() };
   }

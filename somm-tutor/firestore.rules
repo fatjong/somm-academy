@@ -2,17 +2,37 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 老師帳號：可以讀取、刪除全班的問答紀錄。
-    // 要新增老師，把他註冊用的電子郵件加進清單，例如 'mhsieh@gm.lhu.edu.tw'。
+    // ===== 教師密碼 =====
+    // 把下面引號裡的文字換成你的教師密碼，再按「發布」。
+    // 這是全站唯一存放教師密碼的地方：只存在 Firebase 主控台，學生看不到。
+    // 請只在主控台裡修改；不要把填好密碼的這份檔案上傳到 GitHub。
+    function teacherKey() {
+      return '請在這裡填入教師密碼';
+    }
+
+    // 老師：最近 8 小時內用正確教師密碼登記過的連線，
+    // 或列在下方清單、已驗證信箱的帳號
     function isAdmin() {
-      return request.auth != null
-        && request.auth.token.email_verified == true
-        && request.auth.token.email in [
-             'fatjong@gmail.com'
-           ];
+      return request.auth != null && (
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+          && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.at
+               > request.time - duration.value(8, 'h'))
+        || (request.auth.token.email_verified == true
+            && request.auth.token.email in ['fatjong@gmail.com'])
+      );
     }
     function isOwner(uid) {
       return request.auth != null && request.auth.uid == uid;
+    }
+
+    // 教師連線登記：密碼正確才能寫入；任何人都讀不到內容
+    match /admins/{uid} {
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['key', 'at'])
+        && request.resource.data.key == teacherKey()
+        && request.resource.data.at == request.time;
+      allow delete: if isOwner(uid);
+      allow read: if false;
     }
 
     // 學生個人資料（學號、姓名、玩家帳號、生日）
