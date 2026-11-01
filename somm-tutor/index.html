@@ -290,6 +290,12 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
 .ch-conv.on{border-color:var(--wine);background:var(--wine-tint)}
 .rec-sum{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0;border-bottom:1px dashed var(--rule)}
 .rec-small{padding:3px 10px;font-size:12px}
+.ch-login{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:18px;display:flex;flex-direction:column;gap:10px;max-width:420px}
+.ch-login b{font-weight:500;font-size:15px}
+.ch-login input{padding:9px 12px;border:1px solid var(--rule);border-radius:3px;background:var(--surface-2);color:var(--ink);font-size:14px}
+.ch-login input:focus{border-color:var(--wine);outline:none;box-shadow:0 0 0 3px var(--wine-tint)}
+.ch-note{font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0}
+.ch-err{font-size:12.5px;color:#C0504D;margin:0;min-height:1em}
 .ch-act{display:flex;gap:6px;flex-wrap:wrap}
 .ch-convbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:12.5px;color:var(--ink-soft)}
 .ch-convbar b{font-weight:500;word-break:break-all}
@@ -3236,17 +3242,52 @@ function paintChats(){
   if(!AUTH.db){ chatsMsg('帳號系統尚未設定，無法讀取雲端紀錄。'); return }
   var u=AUTH.auth&&AUTH.auth.currentUser;
   var who=document.getElementById('chWho');
-  if(!u){ who.textContent=''; chatsMsg('請先回首頁，用<b>老師的帳號</b>登入網站，再回到這裡。<br>老師帳號需列在資料庫規則的管理者名單中，設定方式見 SETUP-ACCOUNTS.md。'); return }
+  if(!u){ who.textContent='目前沒有登入帳號'; chatsLogin(''); return }
+  if(!u.emailVerified){ who.textContent='目前登入：'+u.email; chatsLogin('<b>'+htmlEsc(u.email)+'</b> 還沒完成信箱驗證，無法讀取紀錄。請先到信箱點驗證連結，或改用已驗證的老師帳號登入。'); return }
   who.textContent='目前登入：'+u.email;
   chatsMsg('讀取中…');
   AUTH.db.collection('chats').orderBy('updatedMs','desc').limit(500).get().then(function(snap){
     TCH.students=snap.docs.map(function(d){ var x=d.data()||{}; x.uid=d.id; return x });
     renderStudents();
   }).catch(function(e){
-    if(e&&e.code==='permission-denied') chatsMsg('<b>'+htmlEsc(u.email)+'</b> 沒有讀取全班紀錄的權限。<br>請在 Firestore 規則的管理者名單加入這個信箱，或改用已列入名單的老師帳號登入。');
+    if(e&&e.code==='permission-denied') chatsLogin('<b>'+htmlEsc(u.email)+'</b> 沒有讀取全班紀錄的權限，這是學生帳號或尚未列入管理者名單的帳號。<br>請改用老師帳號登入，或在 Firestore 規則的管理者名單加入這個信箱。');
     else chatsMsg('讀取失敗：'+htmlEsc((e&&e.code)||String(e)));
   });
 }
+/* 沒有登入老師帳號時，直接在這裡登入 */
+function chatsLogin(note){
+  document.getElementById('chStudents').innerHTML='';
+  document.getElementById('chCount').textContent='';
+  var v=document.getElementById('chView');
+  v.innerHTML='<div class="ch-login">'+
+    '<b>用老師帳號登入，讀取全班問答紀錄</b>'+
+    (note?'<p class="ch-note">'+note+'</p>':'<p class="ch-note">教師密碼只開啟教師模式；學生的雲端紀錄要用列在管理者名單中的老師帳號（例如註冊時用的信箱）登入才讀得到。</p>')+
+    '<input type="email" id="chEm" placeholder="老師帳號的電子郵件" autocomplete="email">'+
+    '<input type="password" id="chPw" placeholder="帳號密碼（不是教師密碼）" autocomplete="current-password">'+
+    '<p class="ch-err" id="chErr" role="alert"></p>'+
+    '<button class="t-btn" id="chLogin">登入並讀取紀錄</button></div>';
+  var u=AUTH.auth&&AUTH.auth.currentUser; if(u&&u.email) document.getElementById('chEm').value=u.email;
+  function go(){
+    var em=document.getElementById('chEm').value.trim(), pw=document.getElementById('chPw').value;
+    var er=document.getElementById('chErr');
+    if(!em||!pw){ er.textContent='請輸入電子郵件與密碼。'; return }
+    var b=document.getElementById('chLogin'); b.disabled=true; b.textContent='登入中…'; er.textContent='';
+    var p=(AUTH.auth.currentUser&&AUTH.auth.currentUser.email!==em)?AUTH.auth.signOut():Promise.resolve();
+    p.then(function(){ return AUTH.auth.signInWithEmailAndPassword(em,pw) }).then(function(){
+      paintChats();
+    }).catch(function(e){
+      b.disabled=false; b.textContent='登入並讀取紀錄';
+      er.textContent=(typeof authErr==='function')?authErr(e):((e&&e.code)||String(e));
+    });
+  }
+  document.getElementById('chLogin').onclick=go;
+  document.getElementById('chPw').onkeydown=function(e){ if(e.key==='Enter') go() };
+}
+/* 登入狀態改變（例如網頁剛開、Firebase 還在恢復登入）時，正在看問答紀錄就重新讀取 */
+if(AUTH.auth) AUTH.auth.onAuthStateChanged(function(){
+  var pane=document.getElementById('pane-chats');
+  if(pane&&pane.classList.contains('on')&&teacherEl&&teacherEl.classList.contains('on')&&!document.getElementById('chLogin')) paintChats();
+});
 function renderStudents(){
   var box=document.getElementById('chStudents');
   var kw=(document.getElementById('chFind').value||'').trim().toLowerCase();

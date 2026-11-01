@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 老師帳號：可以讀取、刪除全班的問答紀錄。
+    // 要新增老師，把他註冊用的電子郵件加進清單，例如 'mhsieh@gm.lhu.edu.tw'。
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in [
+             'fatjong@gmail.com'
+           ];
+    }
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // 學生個人資料（學號、姓名、玩家帳號、生日）
+    match /users/{uid} {
+      allow read, create, update: if isOwner(uid);
+      allow read, delete: if isAdmin();
+    }
+
+    // 問答紀錄：學生只能新增、更新自己的，不能刪除；老師可以讀取、刪除全部
+    match /chats/{uid} {
+      allow read, create, update: if isOwner(uid);
+      allow read, delete: if isAdmin();
+
+      match /convs/{convId} {
+        allow read, create, update: if isOwner(uid);
+        allow read, delete: if isAdmin();
+      }
+    }
+  }
+}
