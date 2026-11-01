@@ -142,6 +142,10 @@ sup.cite{font-size:10.5px;font-weight:500;color:var(--gold);cursor:pointer;backg
 sup.cite:hover,sup.cite.on{background:var(--gold);color:var(--surface)}
 .caret{display:inline-block;width:2px;height:1em;background:var(--wine);vertical-align:-2px;animation:blinkc .9s step-end infinite}
 @keyframes blinkc{50%{opacity:0}}
+.ask-sug{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.ask-lbl{font-size:12px;color:var(--ink-faint);align-self:center}
+.ask-chip{display:inline-block;cursor:pointer;background:var(--surface-2);border:1px solid var(--rule);border-radius:999px;padding:4px 12px;font-size:12.5px;color:var(--ink-soft);line-height:1.6;transition:border-color .15s,color .15s}
+.ask-chip:hover,.ask-chip:focus-visible{border-color:var(--wine);color:var(--wine);outline:none}
 .flag{display:inline-flex;align-items:center;gap:6px;margin-top:11px;font-size:12px;padding:3px 10px;border-radius:999px;background:var(--gold-tint);color:var(--gold);border:1px solid var(--gold-rule)}
 .thinking{font-size:13px;color:var(--ink-faint)}
 
@@ -1380,7 +1384,7 @@ function richText(text,q,nolink){
 /* 朗讀用文字：去掉引用編號與連結標籤 */
 function speechText(html){
   var t=document.createElement('div'); t.innerHTML=html;
-  t.querySelectorAll('sup,.reflink').forEach(function(n){ n.parentNode.removeChild(n) });
+  t.querySelectorAll('sup,.reflink,.ask-sug').forEach(function(n){ n.parentNode.removeChild(n) });
   return t.textContent.replace(/\s+/g,' ').trim();
 }
 
@@ -1506,9 +1510,9 @@ function welcome(speakIt){
   var txt1='您好，歡迎使用 AI侍酒師問答庫。你可以問我葡萄酒、餐酒搭配、酒標、侍酒流程與顧客服務的問題。';
   var txt2='';
   var d=document.createElement('div');d.className='msg ai';
-  d.innerHTML='<div class="lbl">AI侍酒師問答庫</div><div class="bub"><p>'+txt1+'</p><p>今天想從哪個主題開始？</p></div>';
+  d.innerHTML='<div class="lbl">AI侍酒師問答庫</div><div class="bub"><p>'+txt1+'</p><p>今天想從哪個主題開始？不知道從哪裡開始，可以說「教教我」。</p>'+(typeof sug==='function'?sug(['教教我','你會什麼？','你有哪些資料？']):'')+'</div>';
   wrap.appendChild(d); renderSrc([]);
-  if(speakIt&&ttsOn&&synth){ setState('speak'); speak(txt1+'今天想從哪個主題開始？',function(){setState('idle')},'sys_intro'); }
+  if(speakIt&&ttsOn&&synth){ setState('speak'); speak(txt1+'今天想從哪個主題開始？不知道從哪裡開始，可以說教教我。',function(){setState('idle')},'sys_intro'); }
   else setState('idle');
 }
 function freeAsk(){
@@ -1902,17 +1906,37 @@ function liveAsk(qIn){
   wrap.appendChild(d); scrollEnd();
   var bub=d.querySelector('.bub');
 
+  var talk=(typeof chatIntent==='function')?chatIntent(q):null;
+  if(talk){
+    Promise.resolve(talk.html).then(function(html){
+      setTimeout(function(){
+        var a={q:q,src:[],html:html};
+        renderSrc([]);
+        sayAnswer(cleanOut(speechText(a.html)),function(){ setState('idle') });
+        if(!ttsOn||!synth) setState('idle');
+        typeOut(bub,a,function(){
+          busy=false; scrollEnd();
+          if(typeof convPush==='function') convPush('ai',{html:a.html,src:[]});
+          if(talk.id==='quiz'&&typeof startQuiz==='function') setTimeout(startQuiz,400);
+        });
+      },350);
+    });
+    return;
+  }
+
   setTimeout(function(){
-    var hits=retrieve(q);
+    var rq=(typeof chatStrip==='function')?chatStrip(q):q;
+    var hits=retrieve(rq);
+    if(rq!==q){ var h0=retrieve(q); if(h0.length&&(!hits.length||h0[0].score>hits[0].score)){ hits=h0; rq=q } }
     var good=hits.filter(function(h){return h.score>=THRESHOLD});
     bub.innerHTML='<span class="thinking">'+(good.length?('找到 '+good.length+' 個相關教材段落，正在整理答案…'):'檢索結果不足以支持回答，正在確認…')+'</span>';
     scrollEnd();
 
     setTimeout(function(){
       var a;
-      var built=good.length?buildAnswer(q,good.slice(0,3)):null;
+      var built=good.length?buildAnswer(rq,good.slice(0,3)):null;
       if(built){
-        a={q:q,src:built.ids,html:built.html};
+        a={q:q,src:built.ids,html:built.html+((typeof pathNext==='function')?pathNext(q):'')};
       }else{
         a={q:q,src:[],flag:'已送交教師確認',
            html:'<p>目前老師提供的課程教材中，我沒有找到足夠資料可以確定回答這個問題，所以不想直接猜。</p>'+
@@ -3365,7 +3389,7 @@ function deleteConv(uid,c){
 /* ---- 下載紀錄（CSV，Excel 可直接開啟） ---- */
 function plainAnswer(h){
   var t=document.createElement('template'); t.innerHTML=String(h||'');
-  Array.prototype.slice.call(t.content.querySelectorAll('sup')).forEach(function(x){ x.parentNode.removeChild(x) });
+  Array.prototype.slice.call(t.content.querySelectorAll('sup,.ask-sug')).forEach(function(x){ x.parentNode.removeChild(x) });
   Array.prototype.slice.call(t.content.querySelectorAll('p,li,br,div')).forEach(function(x){ x.parentNode.insertBefore(document.createTextNode('\n'),x) });
   return (t.content.textContent||'').replace(/[ \t]+\n/g,'\n').replace(/\n{2,}/g,'\n').trim();
 }
@@ -3417,6 +3441,197 @@ document.getElementById('chFind').oninput=renderStudents;
 document.querySelector('.t-tab[data-t="chats"]').addEventListener('click',paintChats);
 
 
+</script>
+<script>
+/* ==================================================================
+   日常對話：打招呼、自我介紹、功能說明、教材清單、資料時間、學習引導
+   這些問題不必查教材，直接回答，並給學生下一步可以點的問題
+   ================================================================== */
+var PATH=[
+  {t:'侍酒師的工作',d:'侍酒師在餐廳負責什麼、服務範疇有哪些',q:'侍酒師的工作內容是什麼？'},
+  {t:'葡萄品種',d:'常見紅、白葡萄品種與各自的風味，例如卡本內蘇維濃、黑皮諾',q:'卡本內蘇維濃有什麼特色？'},
+  {t:'品飲與香氣',d:'看、聞、嚐的步驟，以及怎麼形容香氣',q:'品酒有哪些步驟？'},
+  {t:'葡萄酒產區',d:'舊世界與新世界的差別與代表產區',q:'新世界和舊世界葡萄酒有什麼不同？'},
+  {t:'餐酒搭配',d:'搭配原則，包括台灣菜怎麼配酒',q:'餐酒搭配有哪些基本原則？'},
+  {t:'侍酒服務流程',d:'靜態酒與香檳氣泡酒的服務步驟',q:'靜態酒的侍酒服務流程是什麼？'}
+];
+function chatNorm(q){
+  return String(q||'').toLowerCase()
+    .replace(/[\s，。！？、,.!?~～…:：;；"'「」『』()（）\-—_]/g,'')
+    .replace(/(呀|啊|阿|嗎|呢|吧|啦|耶|喔|哦|唷|囉|嘛|欸|哈|呦|齁)+$/,'');
+}
+function sug(list){
+  return '<div class="ask-sug">'+list.map(function(x){
+    if(x==='quiz') return '<span class="ask-chip" role="button" tabindex="0" data-act="quiz">AI 測驗我</span>';
+    return '<span class="ask-chip" role="button" tabindex="0" data-q="'+htmlEsc(x)+'">'+htmlEsc(x)+'</span>';
+  }).join('')+'</div>';
+}
+function myName(){
+  try{ if(typeof ME!=='undefined'&&ME){ return ME.name||ME.nick||'' } }catch(e){}
+  return '';
+}
+function kbDocs(){ return KB.docs.filter(function(d){ return d.md&&d.active!==false }) }
+function fmtDate(ms){ var d=new Date(ms); return d.getFullYear()+' 年 '+(d.getMonth()+1)+' 月 '+d.getDate()+' 日' }
+
+/* 教材最後更新時間：先問 GitHub，問不到就用這次載入的時間 */
+var KBDATE={ms:0,src:'',p:null};
+function kbUpdated(){
+  if(KBDATE.p) return KBDATE.p;
+  KBDATE.p=new Promise(function(res){
+    var done=false, left=2, webT=0;
+    var fin=function(ms,src){ if(done) return; done=true; KBDATE.ms=ms; KBDATE.src=src; res(KBDATE) };
+    var one=function(){ if(--left<=0) fin(webT,webT?'web':'') };
+    setTimeout(function(){ fin(webT,webT?'web':'') },4000);
+    /* 1. GitHub 上 kb 資料夾最後一次提交的時間（最準） */
+    try{
+      var x=new XMLHttpRequest();
+      x.open('GET','https://api.github.com/repos/fatjong/somm-academy/commits?path=somm-tutor/kb&per_page=1',true);
+      x.onload=function(){
+        try{ var j=JSON.parse(x.responseText); var t=j&&j[0]&&j[0].commit&&j[0].commit.committer&&j[0].commit.committer.date;
+             if(t){ fin(Date.parse(t),'git'); return } }catch(e){}
+        one();
+      };
+      x.onerror=one; x.send();
+    }catch(e){ one() }
+    /* 2. 網站上教材清單檔的修改時間（備用） */
+    try{
+      var y=new XMLHttpRequest();
+      y.open('HEAD','kb/manifest.json',true);
+      y.onload=function(){ var lm=y.getResponseHeader('Last-Modified'); webT=lm?(Date.parse(lm)||0):0; one() };
+      y.onerror=one; y.send();
+    }catch(e){ one() }
+  });
+  KBDATE.p.then(function(r){ if(!r.ms) KBDATE.p=null });   // 失敗下次再試
+  return KBDATE.p;
+}
+
+var TALK=[
+  {id:'thanks',re:/^(謝謝|感謝|多謝|謝啦|謝囉|thanks?|thankyou|thx|3q|感恩)(你|您|妳)?(的幫忙|幫忙|老師)?$/},
+  {id:'bye',re:/^(再見|掰掰|拜拜|bye|byebye|下次見|晚安|先這樣|我先走了)$/},
+  {id:'greet',re:/^(你好|您好|妳好|哈囉|哈嘍|嗨|hi|hello|hey|早安|午安|早|安安|嘿|yo|在嗎|有人嗎)+(ai|侍酒師|老師|問答庫)?$/},
+  {id:'human',re:/^(你|妳|您)是(真人|人類|人|機器人|ai|電腦|chatgpt|gpt)$|^(你|妳)是真人還是(ai|機器人)$/},
+  {id:'teacher',re:/^(這門課的?|課程的?)?(任課|授課)?老師是誰$|^誰是(任課|授課)?老師$|^(這門課|課程)是誰教的?$/},
+  {id:'who',re:/^(你|妳|您)是(誰|什麼|甚麼|哪位)$|^(你|妳|您)叫(什麼|甚麼)(名字)?$|^(請)?(介紹|說說)(一下)?(你|妳|您)自己$|^自我介紹(一下)?$|^你的名字$/},
+  {id:'can',re:/^(你|妳|您)(會|能|可以)(做|幹|教)?(什麼|甚麼|啥|哪些|幹嘛)(事)?$|^(你|妳|這裡|這個網站)?(有|提供)(什麼|甚麼|哪些)功能$|^(你|妳)?(能|可以)幫(我)?(什麼|甚麼|做什麼)(忙)?$|^功能(介紹|說明)?$/},
+  {id:'data',re:/^(你|妳)?(有|讀過|學過|知道|用了?)(哪些|什麼|甚麼|多少)(資料|教材|文件|檔案|知識|內容)$|^(你的?)?(資料|教材)(來源|從哪裡?來|有哪些|清單)$|^知識庫(有什麼|內容)?$|^你的資料$/},
+  {id:'time',re:/^(你的?)?(資料|教材|知識庫)(的)?(時間|日期|是什麼時候的|多新|什麼時候更新|何時更新|更新時間|更新日期|最後更新|是最新的)$|^(最後|最近)(一次)?更新(是)?(什麼時候|時間|日期)?$|^(什麼時候|何時)更新(的)?$|^更新(時間|日期)$/},
+  {id:'howto',re:/^(我)?(應該|要|該)?(怎麼|如何|怎樣)(使用|用|操作|開始|問|問問題|發問|玩)(你|妳|這個|這裡|這個網站|ai|系統|問答庫)?$|^使用(方法|說明|教學|方式)$|^操作(方法|說明)$|^說明書?$|^(要|該)?怎麼問比較好$/},
+  {id:'quiz',re:/^(考考我|考我|測驗我|出題|出題目|來個測驗|我要測驗|我想測驗|開始測驗|測驗|考試)$/},
+  {id:'teach',re:/^(請)?(你|老師)?(教教我|教我|我想學|我要學|帶我學|我想學習|教我學)(葡萄酒|品酒|侍酒|侍酒師|一下|些什麼|什麼|點東西|吧)?$|^(我)?(要|該|應該)?(從哪裡|從哪|怎麼)(開始|學起|入門)(學)?$|^(新手|入門|初學者|學習路線|學習建議|學習方向|不知道(要)?問什麼|要問什麼|問什麼好|我該學什麼|推薦我學什麼)$/},
+  {id:'ack',re:/^(好|好的|好喔|ok|okay|了解|瞭解|知道了|懂了|嗯|恩|收到|沒問題|原來如此|讚|太棒了|厲害|好厲害|酷)$/}
+];
+/* 「你可以教我醒酒嗎」「請問什麼是單寧」：去掉客套的開頭結尾，只拿主題去查教材 */
+function chatStrip(q){
+  var t=String(q||'').trim().replace(/[？?！!。～~]+$/,'');
+  var t2=t.replace(/^(請問|想請問|我想問|我想知道|我想了解|想知道|告訴我|跟我說|跟我講|說說|介紹一下|介紹|解釋一下|解釋)(一下)?/,'')
+          .replace(/^(你|妳|您|老師)?(可以|能|能不能|可不可以|會不會)?(教教我|教我|幫我|帶我)(學|了解|認識|講解|說明|介紹)?(一下)?/,'')
+          .replace(/(嗎|呢|吧|好嗎|可以嗎|好不好)$/,'').trim();
+  return t2.length>=2?t2:q;
+}
+function chatIntent(q){
+  var n=chatNorm(q);
+  if(!n||n.length>24) return null;
+  for(var i=0;i<TALK.length;i++) if(TALK[i].re.test(n)) return talkReply(TALK[i].id);
+  return null;
+}
+function talkReply(id){
+  var nm=myName(), docs=kbDocs();
+  var R={
+    greet:function(){
+      return '<p>'+(nm?htmlEsc(nm)+'，':'')+'你好！我是 AI侍酒師問答庫，「葡萄酒賞析與服務」課程的學習助理。</p>'+
+             '<p>你可以直接問我葡萄酒的問題，或說「教教我」，我帶你從頭開始學。</p>'+sug(['教教我','你會什麼？',PATH[0].q]);
+    },
+    who:function(){
+      return '<p>我是 AI侍酒師問答庫，龍華科技大學觀光休閒系「葡萄酒賞析與服務」課程的學習助理，任課老師是謝美婷副教授。</p>'+
+             '<p>我只根據老師提供的課程教材回答，每個答案都會標出處，點上標數字就能看到教材原文。教材裡找不到的問題，我不會亂猜，會轉給老師。</p>'+sug(['你會什麼？','你有哪些資料？','教教我']);
+    },
+    human:function(){
+      return '<p>我不是真人，是 AI。我的答案都從老師提供的課程教材裡找出來，並附上出處讓你查證；找不到根據的問題會轉給老師處理。</p>'+sug(['你會什麼？','教教我']);
+    },
+    teacher:function(){
+      return '<p>這門「葡萄酒賞析與服務」的任課老師是謝美婷副教授（龍華科技大學觀光休閒系）。我回答不了的問題，會記錄下來請老師確認。</p>'+sug(['你是誰？','教教我']);
+    },
+    can:function(){
+      return '<p>我可以幫你做這些事：</p><ol>'+
+             '<li>回答葡萄酒、品種、產區、品飲、餐酒搭配與侍酒服務的問題，並標出教材出處</li>'+
+             '<li>按「AI 測驗我」出 10 題由淺入深的測驗，每題立刻告訴你對錯</li>'+
+             '<li>用語音聽你問、念答案給你聽</li>'+
+             '<li>保存你的問答紀錄，之後可以從左側列表點回來複習</li></ol>'+
+             '<p>想從哪裡開始？</p>'+sug(['教教我','我應該怎麼使用？','quiz']);
+    },
+    data:function(){
+      if(!docs.length) return '<p>教材還在載入中，請稍等幾秒再問我一次。</p>'+sug(['你有哪些資料？']);
+      var G=[['產區與品種',/產區|品種|types/i],['品飲與香氣',/tasting|品飲|香氣|language|形容/i],['餐酒搭配',/搭配|pairing|food|食物|台味|敘事|應用/i],['侍酒服務',/侍酒|SOP|服務|香檳|靜態酒/i]];
+      var grp={}, other=[];
+      docs.forEach(function(d){
+        var nmx=docTitle(d.name), hit=null;
+        for(var i=0;i<G.length;i++) if(G[i][1].test(nmx)){ hit=G[i][0]; break }
+        if(hit){ (grp[hit]=grp[hit]||[]).push(nmx) } else other.push(nmx);
+      });
+      var h='<p>目前我讀過老師提供的 <strong>'+docs.length+' 份課程教材</strong>，另外有一套 '+((QUIZ.bank&&QUIZ.bank.length)||157)+' 題的測驗題庫。教材大致分成：</p><ul>';
+      G.forEach(function(g){ var l=grp[g[0]]; if(l) h+='<li>'+g[0]+'（'+l.length+' 份）：'+htmlEsc(l.slice(0,2).map(function(x){ x=x.replace(/\s+[-_|]\s+.*$/,'')||x; return x.length>16?x.slice(0,16)+'…':x }).join('、'))+(l.length>2?' 等':'')+'</li>' });
+      if(other.length) h+='<li>其他（'+other.length+' 份）</li>';
+      h+='</ul><p>我只根據這些教材回答，不會上網查資料。</p>';
+      return h+sug(['資料的時間？','教教我']);
+    },
+    time:function(){
+      return kbUpdated().then(function(r){
+        var when=r.ms?'老師最後一次更新教材是 <strong>'+fmtDate(r.ms)+'</strong>。':'目前查不到教材的更新日期，這次是在 '+fmtDate(Date.now())+' 載入的。';
+        return '<p>'+when+'</p><p>我只根據老師上傳的這份教材回答，不會上網找即時資訊。像酒價、年份評分、最新得獎這類會變動的消息，請以老師上課說明或官方資料為準。</p>'+
+               sug(['你有哪些資料？','教教我']);
+      });
+    },
+    howto:function(){
+      return '<p>使用方式很簡單：</p><ol>'+
+             '<li>在下方輸入問題，或按麥克風用說的</li>'+
+             '<li>答案裡的上標數字可以點，會打開教材原文，關鍵字有標黃色</li>'+
+             '<li>按「AI 測驗我」做 10 題測驗，檢查自己學會了沒</li>'+
+             '<li>左側「新對話」開新主題，歷史對話可以點回來複習</li></ol>'+
+             '<p>問題越具體，答案越準，例如「紅酒為什麼要醒酒」會比「紅酒」好。</p>'+sug(['教教我','紅酒為什麼需要醒酒？']);
+    },
+    teach:function(){
+      var h='<p>好，我們照這個順序學，由淺入深：</p><ol>';
+      PATH.forEach(function(p){ h+='<li><strong>'+p.t+'</strong>：'+p.d+'</li>' });
+      h+='</ol><p>先從第一步開始。每學完一段，可以用「AI 測驗我」檢查自己。</p>';
+      return h+sug([PATH[0].q,PATH[1].q,'quiz']);
+    },
+    quiz:function(){ return '<p>好，開始測驗！一共 10 題，由淺入深。</p>' },
+    thanks:function(){
+      return '<p>不客氣！學到這裡，要不要繼續下一個主題，或做個測驗確認自己記住了？</p>'+sug(['教教我','quiz']);
+    },
+    bye:function(){
+      return '<p>'+(nm?htmlEsc(nm)+'，':'')+'再見！下次回來，左側的歷史對話可以接著複習。</p>';
+    },
+    ack:function(){
+      var p=PATH[Math.floor(Math.random()*PATH.length)];
+      return '<p>很好！想再往下學，可以試試這個問題：</p>'+sug([p.q,'教教我','quiz']);
+    }
+  };
+  return {id:id,html:R[id]()};
+}
+
+/* 學習路線上的問題答完，接著帶到下一步 */
+function pathNext(q){
+  var n=chatNorm(q);
+  for(var i=0;i<PATH.length;i++) if(chatNorm(PATH[i].q)===n){
+    var nx=PATH[i+1];
+    return '<div class="ask-sug"><span class="ask-lbl">'+(nx?'學習路線 '+(i+1)+'/'+PATH.length+'，下一步：':'學習路線完成！')+'</span>'+
+      (nx?'<span class="ask-chip" role="button" tabindex="0" data-q="'+htmlEsc(nx.q)+'">'+htmlEsc(nx.q)+'</span>':'')+
+      '<span class="ask-chip" role="button" tabindex="0" data-act="quiz">AI 測驗我</span></div>';
+  }
+  return '';
+}
+/* 建議問題點了就問；測驗鈕直接開始測驗 */
+document.addEventListener('click',function(e){
+  var c=e.target.closest&&e.target.closest('#wrap .ask-chip');
+  if(!c||busy) return;
+  if(c.dataset.act==='quiz'){ if(typeof startQuiz==='function') startQuiz(); return }
+  liveAsk(c.dataset.q||c.textContent);
+});
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Enter') return;
+  var c=e.target.closest&&e.target.closest('#wrap .ask-chip'); if(c){ e.preventDefault(); c.click() }
+});
 </script>
 </body>
 </html>
