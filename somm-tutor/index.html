@@ -2776,12 +2776,14 @@ function paintRecords(){
   var users=[];
   try{ users=JSON.parse(localStorage.getItem('sommUsers')||'[]') }catch(e){}
   try{ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i);
-    if(k&&k.indexOf('sommQuiz_')===0&&users.indexOf(k.slice(9))<0) users.push(k.slice(9)) } }catch(e){}
+    if(k&&k.indexOf('sommQuiz_')===0&&!/_recent$/.test(k)&&users.indexOf(k.slice(9))<0) users.push(k.slice(9)) } }catch(e){}
   var rows=[];
   users.forEach(function(u){
     var h=[];
     try{ h=JSON.parse(localStorage.getItem('sommQuiz_'+u)||'[]') }catch(e){}
-    h.forEach(function(r){ rows.push({u:u,at:r.at,score:r.score,total:r.total,detail:r.detail||[]}) });
+    if(!Array.isArray(h)) h=[];
+    /* 只列真正的測驗成績；_recent 是「最近出過的題目」，用來避免重複出題，不是成績 */
+    h.forEach(function(r){ if(r&&typeof r.score==='number'&&typeof r.total==='number'&&r.at) rows.push({u:u,at:r.at,score:r.score,total:r.total,detail:r.detail||[]}) });
   });
   rows.sort(function(a,b){ return b.at-a.at });
   if(!rows.length){ box.innerHTML='<p class="t-empty">這台裝置還沒有測驗紀錄。<br>學生在自己的裝置上作答，紀錄留在他們的瀏覽器，老師這裡看不到。<br>要集中管理需要後端。</p>'; return }
