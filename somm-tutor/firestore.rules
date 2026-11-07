@@ -41,6 +41,26 @@ service cloud.firestore {
       allow read, delete: if isAdmin();
     }
 
+    // 測驗成績：學生只能新增自己的成績，不能修改或刪除；老師可以讀取、刪除全部
+    match /quiz/{uid} {
+      allow read, create, update: if isOwner(uid);
+      allow read, delete: if isAdmin();
+
+      match /runs/{runId} {
+        allow create: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(['ms', 'at', 'score', 'total', 'legacy', 'detail'])
+          && request.resource.data.score is int
+          && request.resource.data.score >= 0
+          && request.resource.data.score <= 10
+          && request.resource.data.total == 10
+          && request.resource.data.detail is list
+          && request.resource.data.detail.size() <= 10
+          && request.resource.data.at == request.time;
+        allow read: if isOwner(uid) || isAdmin();
+        allow delete: if isAdmin();
+      }
+    }
+
     // 問答紀錄：學生只能新增、更新自己的，不能刪除；老師可以讀取、刪除全部
     match /chats/{uid} {
       allow read, create, update: if isOwner(uid);

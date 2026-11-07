@@ -289,6 +289,24 @@ span.reflink{color:var(--ink-faint);white-space:nowrap}
 .ch-conv span{font-size:11px;color:var(--ink-faint)}
 .ch-conv.on{border-color:var(--wine);background:var(--wine-tint)}
 .rec-sum{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0;border-bottom:1px dashed var(--rule)}
+.qz-cloud{font-size:12.5px;color:var(--ink-faint);margin:10px 0 2px}
+.qz-cloud.ok{color:var(--ok)}
+.rc-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.rc-kpi div{background:var(--surface);border:1px solid var(--rule);border-radius:3px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.rc-kpi b{font-size:22px;font-weight:500;color:var(--wine);font-variant-numeric:tabular-nums}
+.rc-kpi span{font-size:12px;color:var(--ink-faint)}
+.rc-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:3px;background:var(--surface)}
+.rc-tab{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
+.rc-tab th{text-align:left;font-weight:500;font-size:12px;color:var(--ink-faint);padding:9px 10px;border-bottom:1px solid var(--rule);cursor:pointer;user-select:none;background:var(--surface-2)}
+.rc-tab th.on{color:var(--wine)}
+.rc-tab td{padding:9px 10px;border-bottom:1px solid var(--rule);color:var(--ink)}
+.rc-tab td.n{text-align:right;font-variant-numeric:tabular-nums}
+.rc-tab tbody tr{cursor:pointer}
+.rc-tab tbody tr:hover,.rc-tab tbody tr.on{background:var(--wine-tint)}
+.rc-tab tbody tr:last-child td{border-bottom:none}
+.rc-note{font-size:12px;color:var(--ink-faint);margin:8px 0 14px}
+.rc-legacy{font-size:11px;color:var(--ink-faint);border:1px solid var(--rule);border-radius:999px;padding:0 7px;margin-left:8px;font-weight:400}
+@media (max-width:600px){.rc-kpi{grid-template-columns:repeat(2,1fr)}}
 .rec-row{cursor:pointer}
 .rec-row:hover,.rec-row.open{border-color:var(--wine)}
 .rec-score{font-size:16px;font-weight:500;color:var(--wine);white-space:nowrap}
@@ -616,7 +634,7 @@ ol.ch-note{padding-left:1.3em}
     </section>
 
     <section class="t-pane" id="pane-rec">
-      <p class="t-hint">這裡只看得到<b>這台裝置</b>的測驗紀錄，並以玩家帳號顯示。學生在自己的手機或電腦作答，成績留在他們的瀏覽器，老師這邊讀不到。要集中管理全班成績需要後端。</p>
+      <p class="t-hint">全班學生登入後的測驗成績都存在雲端，不在學生的裝置上。下表彙整每位學生的測驗次數、分數，以及提問數與活躍天數，可作為學習投入與評分的參考，並可匯出 CSV。</p>
       <div id="reclist"></div>
     </section>
 
@@ -3575,8 +3593,8 @@ function recRows(s,convs){
   });
   return rows;
 }
-function downloadCsv(rows,name){
-  var head=['玩家帳號','學號','姓名','電子郵件','對話標題','最後更新','題號','學生提問','AI 回答','引用教材'];
+function downloadCsv(rows,name,head){
+  head=head||['玩家帳號','學號','姓名','電子郵件','對話標題','最後更新','題號','學生提問','AI 回答','引用教材'];
   var esc=function(v){ v=String(v==null?'':v); return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v };
   var csv='﻿'+[head].concat(rows).map(function(r){ return r.map(esc).join(',') }).join('\r\n');
   var d=new Date(), stamp=d.getFullYear()+('0'+(d.getMonth()+1)).slice(-2)+('0'+d.getDate()).slice(-2);
@@ -3796,6 +3814,309 @@ document.addEventListener('keydown',function(e){
   if(e.key!=='Enter') return;
   var c=e.target.closest&&e.target.closest('#wrap .ask-chip'); if(c){ e.preventDefault(); c.click() }
 });
+</script>
+<script>
+/* ==================================================================
+   測驗成績存雲端（Firestore）
+   quiz/{uid}                 學生資料（玩家帳號、學號、姓名、信箱）
+   quiz/{uid}/runs/{runId}    每一次測驗：分數、時間、逐題作答
+   成績不再存在學生的瀏覽器；網路中斷時才暫存，下次登入自動補傳
+   ================================================================== */
+function qzStatus(t,ok){
+  var go=function(){ var el=document.getElementById('qzcloud'); if(el){ el.textContent=t; el.className='qz-cloud'+(ok?' ok':'') } };
+  go(); setTimeout(go,0); setTimeout(go,200);
+}
+function runFromRec(rec,legacy){
+  var num=function(v){ return (typeof v==='number'&&isFinite(v))?v:null };
+  return {
+    ms:num(rec.at)||Date.now(),
+    at:firebase.firestore.FieldValue.serverTimestamp(),
+    score:Math.max(0,Math.min(10,Math.round(num(rec.score)||0))),
+    total:10,
+    legacy:!!legacy,
+    detail:(rec.detail||[]).slice(0,10).map(function(x){
+      return {id:String(x.id||''),ok:!!x.ok,l:num(x.l),c:String(x.c||''),pick:num(x.pick),
+              q:String(x.q||''),o:(x.o||[]).map(String),a:num(x.a),t:String(x.t||'')};
+    })
+  };
+}
+function qzRef(){ return AUTH.db.collection('quiz').doc(ME.uid) }
+function qzPendKey(){ return 'sommQuizPending_'+ME.uid }
+function qzPend(){ try{ return JSON.parse(localStorage.getItem(qzPendKey())||'[]') }catch(e){ return [] } }
+function qzPendSet(a){ try{ if(a.length) localStorage.setItem(qzPendKey(),JSON.stringify(a)); else localStorage.removeItem(qzPendKey()) }catch(e){} }
+/* 上傳一次測驗；同一筆重送時（規則不允許覆寫）視為已存在 */
+function qzUploadOne(run){
+  var id='r'+run.ms, ref=qzRef().collection('runs').doc(id);
+  return ref.set(run).catch(function(e){
+    if(e&&e.code==='permission-denied') return ref.get().then(function(d){ if(!d.exists) throw e });
+    throw e;
+  });
+}
+function qzUpload(runs){
+  return qzRef().set({uid:ME.uid,email:ME.email,nickname:ME.nick||'',studentId:ME.sid||'',name:ME.name||'',
+                      updatedMs:Date.now(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})
+    .then(function(){ return runs.reduce(function(p,r){ return p.then(function(){ return qzUploadOne(r) }) },Promise.resolve()) });
+}
+quizSave=function(rec){
+  if(!AUTH.db){ qzStatus('帳號系統尚未設定，這次成績不會記錄。'); return }
+  if(!cloudReady()){ qzStatus('訪客或未登入時，成績不會記錄。登入後作答，老師才看得到。'); return }
+  var run=runFromRec(rec,false);
+  qzStatus('成績上傳中…');
+  qzUpload([run]).then(function(){ qzStatus('✓ 成績已存到雲端，老師可以查看',true) })
+    .catch(function(e){
+      console.warn('測驗成績未上傳：',e&&e.code);
+      var p=qzPend(); p.push(Object.assign({},run,{at:null})); qzPendSet(p);
+      qzStatus('網路不穩，成績先暫存在這台裝置，下次登入會自動補傳給老師。');
+    });
+};
+/* 登入後：補傳暫存的成績，並把舊版存在瀏覽器裡的成績搬到雲端 */
+function qzSync(){
+  if(!cloudReady()) return;
+  var runs=qzPend().map(function(r){ r.at=firebase.firestore.FieldValue.serverTimestamp(); return r });
+  var oldKey='sommQuiz_'+ME.email, old=[];
+  try{ old=JSON.parse(localStorage.getItem(oldKey)||'[]') }catch(e){}
+  if(!Array.isArray(old)) old=[];
+  old.forEach(function(r){ if(r&&typeof r.score==='number') runs.push(runFromRec(r,true)) });
+  if(!runs.length) return;
+  qzUpload(runs).then(function(){
+    qzPendSet([]);
+    try{ localStorage.removeItem(oldKey) }catch(e){}
+  }).catch(function(e){ console.warn('補傳測驗成績失敗：',e&&e.code) });
+}
+var _loadProfileQ=loadProfile;
+loadProfile=function(u){
+  var p=_loadProfileQ(u);
+  Promise.resolve(p).then(function(){ setTimeout(qzSync,300) },function(){});
+  return p;
+};
+/* 測驗結束畫面加上「是否已存到雲端」 */
+var _finishQuizQ=finishQuiz;
+finishQuiz=function(){
+  _finishQuizQ();
+  var box=document.querySelector('#quizbody .qz-done');
+  if(box&&!document.getElementById('qzcloud')){
+    var d=document.createElement('div'); d.id='qzcloud'; d.className='qz-cloud';
+    var act=box.querySelector('.qz-act'); box.insertBefore(d,act||null);
+  }
+};
+
+/* ==================================================================
+   教師模式「學習紀錄」：全班測驗成績與學習投入統計（雲端）
+   ================================================================== */
+var REC={list:[],sel:null,sort:'sid',dir:1,loaded:false};
+function recBox(){ return document.getElementById('reclist') }
+function recMsg(h){ recBox().innerHTML='<p class="t-empty">'+h+'</p>' }
+function dayKey(ms){ var d=new Date(ms); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate() }
+function getAllDocs(q){ return q.get().then(function(s){ return s.docs.map(function(d){ var x=d.data()||{}; x.id=d.id; return x }) }) }
+
+paintRecords=function(){
+  if(!recBox()) return;
+  if(!AUTH.db){ recMsg('帳號系統尚未設定，無法讀取雲端成績。'); return }
+  if(!adminInit()){ recMsg('無法連線到雲端資料庫，請重新整理網頁再試。'); return }
+  recMsg('讀取全班紀錄中…');
+  adminSignIn().then(function(){
+    var db=TDB();
+    return Promise.all([
+      getAllDocs(db.collection('quiz').orderBy('updatedMs','desc').limit(500)),
+      getAllDocs(db.collection('chats').orderBy('updatedMs','desc').limit(500))
+    ]).then(function(r){
+      var map={};
+      function stu(x){ var s=map[x.id]; if(!s){ s=map[x.id]={uid:x.id,runs:[],convs:[]} }
+        ['nickname','studentId','name','email'].forEach(function(k){ if(x[k]&&!s[k]) s[k]=x[k] }); return s }
+      r[0].forEach(stu); r[1].forEach(stu);
+      var jobs=[];
+      r[0].forEach(function(x){ jobs.push(getAllDocs(db.collection('quiz').doc(x.id).collection('runs').orderBy('ms','desc').limit(500)).then(function(a){ map[x.id].runs=a })) });
+      r[1].forEach(function(x){ jobs.push(getAllDocs(db.collection('chats').doc(x.id).collection('convs').orderBy('updatedMs','desc').limit(500)).then(function(a){ map[x.id].convs=a })) });
+      return Promise.all(jobs).then(function(){
+        REC.list=Object.keys(map).map(function(k){ return recStats(map[k]) });
+        REC.loaded=true; renderRec();
+      });
+    });
+  }).catch(function(e){
+    var c=(e&&e.code)||'';
+    if(c==='need-password') recRelogin();
+    else if(/permission-denied/.test(c)) recMsg('資料庫還不讓教師連線讀取測驗成績，表示規則是舊版。<br>請把新版 firestore.rules 貼到 Firebase 主控台的「規則」分頁（記得填入教師密碼）後按發布。');
+    else recMsg('讀取失敗：'+htmlEsc(c||String(e)));
+  });
+};
+function recStats(s){
+  var sc=s.runs.map(function(r){ return r.score||0 });
+  var days={}, last=0;
+  s.runs.forEach(function(r){ days[dayKey(r.ms)]=1; last=Math.max(last,r.ms||0) });
+  s.convs.forEach(function(c){ var t=tsMs(c.updatedAt,c.updatedMs); if(t){ days[dayKey(t)]=1; last=Math.max(last,t) } if(c.at) days[dayKey(c.at)]=1 });
+  s.nQuiz=s.runs.length;
+  s.avg=sc.length?sc.reduce(function(a,b){return a+b},0)/sc.length:null;
+  s.best=sc.length?Math.max.apply(null,sc):null;
+  s.correct=sc.reduce(function(a,b){return a+b},0);
+  s.lastQuiz=s.runs.length?Math.max.apply(null,s.runs.map(function(r){return r.ms||0})):0;
+  s.nAsk=s.convs.reduce(function(a,c){ return a+(c.count||0) },0);
+  s.nConv=s.convs.length;
+  s.days=Object.keys(days).length;
+  s.last=last;
+  return s;
+}
+var REC_COLS=[
+  ['nick','玩家帳號',function(s){return s.nickname||s.email||''}],
+  ['sid','學號',function(s){return s.studentId||''}],
+  ['name','姓名',function(s){return s.name||''}],
+  ['nQuiz','測驗次數',function(s){return s.nQuiz}],
+  ['avg','平均分',function(s){return s.avg==null?-1:s.avg}],
+  ['best','最佳',function(s){return s.best==null?-1:s.best}],
+  ['correct','累計答對',function(s){return s.correct}],
+  ['nAsk','提問數',function(s){return s.nAsk}],
+  ['days','活躍天數',function(s){return s.days}],
+  ['last','最後活動',function(s){return s.last}]
+];
+function recVisible(){
+  var kw=((document.getElementById('rcFind')||{}).value||'').trim().toLowerCase();
+  var col=REC_COLS.filter(function(c){return c[0]===REC.sort})[0]||REC_COLS[1];
+  return REC.list.filter(function(s){
+    return !kw||[s.nickname,s.studentId,s.name,s.email].join(' ').toLowerCase().indexOf(kw)>=0;
+  }).sort(function(a,b){
+    var x=col[2](a), y=col[2](b);
+    if(typeof x==='string') return x.localeCompare(y,'zh-Hant')*REC.dir;
+    return (x-y)*REC.dir;
+  });
+}
+function renderRec(){
+  var box=recBox(), kw=(document.getElementById('rcFind')||{}).value||'';
+  var L=REC.list, nRuns=L.reduce(function(a,s){return a+s.nQuiz},0), nAsk=L.reduce(function(a,s){return a+s.nAsk},0);
+  var h='<div class="rc-kpi">'+
+    '<div><b>'+L.length+'</b><span>位學生</span></div>'+
+    '<div><b>'+nRuns+'</b><span>次測驗</span></div>'+
+    '<div><b>'+(nRuns?(L.reduce(function(a,s){return a+s.correct},0)/nRuns).toFixed(1):'—')+'</b><span>全班平均分</span></div>'+
+    '<div><b>'+nAsk+'</b><span>次提問</span></div></div>'+
+    '<div class="ch-bar"><input type="text" id="rcFind" placeholder="搜尋玩家帳號、學號、姓名或信箱" value="'+htmlEsc(kw)+'">'+
+    '<button class="t-btn alt" id="rcReload">重新整理</button>'+
+    '<button class="t-btn alt" id="rcCsv">匯出成績總表</button>'+
+    '<button class="t-btn alt" id="rcCsv2">匯出逐題明細</button>'+
+    '<button class="t-btn warn" id="rcClr">清空全部測驗紀錄</button></div>';
+  var rows=recVisible();
+  if(!L.length) h+='<p class="t-empty">還沒有任何學生的學習紀錄。<br>學生登入後作答或提問，這裡就會出現。</p>';
+  else if(!rows.length) h+='<p class="t-empty">沒有符合的學生。</p>';
+  else{
+    h+='<div class="rc-wrap"><table class="rc-tab"><thead><tr>'+REC_COLS.map(function(c){
+      return '<th data-k="'+c[0]+'"'+(REC.sort===c[0]?' class="on"':'')+'>'+c[1]+(REC.sort===c[0]?(REC.dir>0?' ▲':' ▼'):'')+'</th>';
+    }).join('')+'</tr></thead><tbody>'+rows.map(function(s){
+      return '<tr data-uid="'+htmlEsc(s.uid)+'"'+(REC.sel===s.uid?' class="on"':'')+'>'+
+        '<td>'+htmlEsc(s.nickname||s.email||'未命名')+'</td><td>'+htmlEsc(s.studentId||'')+'</td><td>'+htmlEsc(s.name||'')+'</td>'+
+        '<td class="n">'+s.nQuiz+'</td><td class="n">'+(s.avg==null?'—':s.avg.toFixed(1))+'</td><td class="n">'+(s.best==null?'—':s.best)+'</td>'+
+        '<td class="n">'+s.correct+'</td><td class="n">'+s.nAsk+'</td><td class="n">'+s.days+'</td><td>'+(s.last?fmtT(s.last):'—')+'</td></tr>';
+    }).join('')+'</tbody></table></div>'+
+    '<p class="rc-note">點表頭排序；點學生查看每次測驗與逐題作答。提問數、活躍天數來自問答紀錄，可作為學習投入的參考。</p>'+
+    '<div id="rcStu"></div>';
+  }
+  box.innerHTML=h;
+  var f=document.getElementById('rcFind');
+  f.oninput=function(){ var pos=f.selectionStart; renderRec(); var g=document.getElementById('rcFind'); g.focus(); try{ g.setSelectionRange(pos,pos) }catch(e){} };
+  document.getElementById('rcReload').onclick=paintRecords;
+  document.getElementById('rcCsv').onclick=recCsvSummary;
+  document.getElementById('rcCsv2').onclick=recCsvDetail;
+  document.getElementById('rcClr').onclick=recClearAll;
+  box.querySelectorAll('th[data-k]').forEach(function(th){ th.onclick=function(){
+    if(REC.sort===th.dataset.k) REC.dir=-REC.dir; else { REC.sort=th.dataset.k; REC.dir=/nick|sid|name/.test(th.dataset.k)?1:-1 }
+    renderRec();
+  }});
+  box.querySelectorAll('tr[data-uid]').forEach(function(tr){ tr.onclick=function(){ REC.sel=(REC.sel===tr.dataset.uid?null:tr.dataset.uid); renderRec() } });
+  if(REC.sel) renderRecStudent();
+}
+function recFind(uid){ return REC.list.filter(function(s){return s.uid===uid})[0] }
+function renderRecStudent(){
+  var s=recFind(REC.sel), box=document.getElementById('rcStu'); if(!s||!box) return;
+  var h='<div class="ch-head"><div><b>'+htmlEsc(s.nickname||s.email||'')+'</b><span>'+htmlEsc([s.studentId,s.name,s.email].filter(Boolean).join('　'))+'</span></div>'+
+        '<div class="ch-act"><button class="t-btn warn" id="rcClrOne">清除此學生測驗紀錄</button></div></div>';
+  if(!s.runs.length) h+='<p class="t-empty">這位學生還沒有測驗紀錄。</p>';
+  s.runs.forEach(function(r){
+    h+='<div class="doc rec-row" data-run="'+htmlEsc(r.id)+'" title="點一下查看每一題的作答"><div class="dn">第 '+(s.runs.length-s.runs.indexOf(r))+' 次測驗'+(r.legacy?'<span class="rc-legacy">舊紀錄</span>':'')+
+       '<div class="dm">'+fmtT(r.ms)+'</div></div>'+
+       '<div style="display:flex;align-items:center;gap:10px"><div class="rec-score">'+r.score+' / '+(r.total||10)+' <span>▾ 查看作答</span></div>'+
+       '<button class="t-btn warn rec-small" data-rundel="'+htmlEsc(r.id)+'">刪除</button></div></div>';
+  });
+  box.innerHTML=h;
+  box.querySelectorAll('.rec-row').forEach(function(row){
+    row.onclick=function(e){
+      if(e.target.closest('[data-rundel]')) return;
+      var nx=row.nextElementSibling;
+      if(nx&&nx.classList.contains('rec-det')){ nx.remove(); row.classList.remove('open'); return }
+      var r=s.runs.filter(function(x){return x.id===row.dataset.run})[0]; if(!r) return;
+      var det=document.createElement('div'); det.className='rec-det'; det.innerHTML='<p class="t-empty">讀取題目中…</p>';
+      row.after(det); row.classList.add('open');
+      loadBank(function(bank){ det.innerHTML=recDetail(r,bank||[]) });
+    };
+  });
+  box.querySelectorAll('[data-rundel]').forEach(function(b){ b.onclick=function(){
+    var r=s.runs.filter(function(x){return x.id===b.dataset.rundel})[0]; if(!r) return;
+    pwConfirm('刪除這次測驗紀錄','會永久刪除「'+(s.nickname||s.email)+'」在 '+fmtT(r.ms)+' 的測驗紀錄（'+r.score+' / 10），無法復原。').then(function(ok){
+      if(!ok) return;
+      TDB().collection('quiz').doc(s.uid).collection('runs').doc(r.id).delete().then(function(){
+        s.runs=s.runs.filter(function(x){return x.id!==r.id}); recStats(s); renderRec(); toast('已刪除這次測驗紀錄');
+      }).catch(function(e){ toast('刪除失敗：'+((e&&e.code)||e)) });
+    });
+  }});
+  document.getElementById('rcClrOne').onclick=function(){
+    pwConfirm('清除此學生測驗紀錄','會永久刪除「'+(s.nickname||s.email)+'」在雲端的全部 '+s.runs.length+' 次測驗紀錄，無法復原。問答紀錄不受影響。').then(function(ok){
+      if(!ok) return; toast('刪除中…');
+      recDeleteQuiz(s.uid).then(function(){ s.runs=[]; recStats(s); renderRec(); toast('已清除此學生的測驗紀錄') })
+        .catch(function(e){ toast('刪除失敗：'+((e&&e.code)||e)) });
+    });
+  };
+}
+function recDeleteQuiz(uid){
+  var ref=TDB().collection('quiz').doc(uid);
+  return ref.collection('runs').get().then(function(snap){
+    var docs=snap.docs, chunks=[];
+    for(var i=0;i<docs.length;i+=400) chunks.push(docs.slice(i,i+400));
+    return chunks.reduce(function(p,ch){ return p.then(function(){ var b=TDB().batch(); ch.forEach(function(d){ b.delete(d.ref) }); return b.commit() }) },Promise.resolve());
+  }).then(function(){ return ref.delete() });
+}
+function recClearAll(){
+  var n=REC.list.reduce(function(a,s){return a+s.nQuiz},0);
+  if(!n){ toast('目前沒有測驗紀錄'); return }
+  pwConfirm('清空全部測驗紀錄','會永久刪除全班 '+n+' 次測驗紀錄，無法復原。問答紀錄不受影響。').then(function(ok){
+    if(!ok) return; toast('刪除中…');
+    REC.list.filter(function(s){return s.nQuiz}).reduce(function(p,s){ return p.then(function(){ return recDeleteQuiz(s.uid) }) },Promise.resolve())
+      .then(function(){ toast('已清空全部測驗紀錄'); REC.sel=null; paintRecords() })
+      .catch(function(e){ toast('刪除失敗：'+((e&&e.code)||e)); paintRecords() });
+  });
+}
+function recCsvSummary(){
+  if(!REC.list.length){ toast('目前沒有資料可匯出'); return }
+  var rows=recVisible().map(function(s){
+    return [s.nickname||'',s.studentId||'',s.name||'',s.email||'',s.nQuiz,s.avg==null?'':s.avg.toFixed(1),s.best==null?'':s.best,
+            s.correct,s.nQuiz*10,s.nAsk,s.nConv,s.days,s.lastQuiz?fmtT(s.lastQuiz):'',s.last?fmtT(s.last):''];
+  });
+  downloadCsv(rows,'學習紀錄_成績總表',['玩家帳號','學號','姓名','電子郵件','測驗次數','平均分','最佳分','累計答對','累計作答題數','提問數','對話數','活躍天數','最近測驗','最後活動']);
+}
+function recCsvDetail(){
+  var all=[]; recVisible().forEach(function(s){ s.runs.forEach(function(r){ all.push([s,r]) }) });
+  if(!all.length){ toast('目前沒有測驗紀錄可匯出'); return }
+  loadBank(function(bank){
+    var byId={}; (bank||[]).forEach(function(q){ byId[q.id]=q });
+    var lv=['','基礎','進階','挑戰'], rows=[];
+    all.forEach(function(p){
+      var s=p[0], r=p[1];
+      (r.detail||[]).forEach(function(x,i){
+        var q=byId[x.id]||{}, o=(x.o&&x.o.length)?x.o:(q.o||[]), a=(typeof x.a==='number')?x.a:q.a;
+        var pick=(typeof x.pick==='number')?x.pick:(x.ok?a:null);
+        rows.push([s.nickname||'',s.studentId||'',s.name||'',fmtT(r.ms),r.score,i+1,lv[x.l||q.l]||'',cleanOut(x.q||q.q||''),
+                   pick==null?'未記錄':cleanOut(o[pick]||''),x.ok?'答對':'答錯',cleanOut(o[a]||'')]);
+      });
+    });
+    downloadCsv(rows,'學習紀錄_逐題明細',['玩家帳號','學號','姓名','測驗時間','該次分數','題號','難度','題目','學生答案','對錯','正確答案']);
+  });
+}
+function recRelogin(){
+  recBox().innerHTML='<div class="ch-login"><b>請重新輸入教師密碼</b><p class="ch-note">為了保護學生資料，重新整理網頁後需要再輸入一次教師密碼。</p>'+
+    '<input type="password" id="rcPw" placeholder="教師密碼" autocomplete="off"><p class="ch-err" id="rcErr" role="alert"></p>'+
+    '<button class="t-btn" id="rcGo">讀取紀錄</button></div>';
+  var go=function(){
+    var er=document.getElementById('rcErr'); er.textContent='驗證中…';
+    teacherVerify(document.getElementById('rcPw').value).then(function(ok){ if(ok) paintRecords(); else er.textContent='教師密碼不正確。' })
+      .catch(function(e){ er.textContent=teacherErrMsg(e) });
+  };
+  document.getElementById('rcGo').onclick=go;
+  document.getElementById('rcPw').onkeydown=function(e){ if(e.key==='Enter') go() };
+}
 </script>
 </body>
 </html>
