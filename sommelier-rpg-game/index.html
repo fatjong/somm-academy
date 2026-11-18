@@ -591,7 +591,7 @@ Object.keys(DRINKS).forEach(k=>DRINKS[k].id=k);
 
 /* ── 餐廳與菜單 ───────────────────────────────────────────── */
 const RESTAURANTS=[
- {id:'hotfry',hours:{open:18,close:26},name:'熱炒店',pin:'stirfry',mood:'快速、吵雜、親民',
+ {id:'hotfry',hours:{open:18,close:26,peaks:[[19,21.5],[22.5,24]]},name:'熱炒店',pin:'stirfry',mood:'快速、吵雜、親民',
   brief:'場景為快炒店，玩家扮演侍酒師。環境強調快速反應與親切互動，顧客不耐久等。',
   drinks:['gaoliang','beer','shaoxing','whisky','redHouse','plum','oolong','barley'],
   menu:[
@@ -602,7 +602,7 @@ const RESTAURANTS=[
    {n:'清蒸鱸魚',t:['海鮮','清蒸','清淡'],p:480},{n:'炒海瓜子',t:['海鮮','辣','蒜香'],p:320},
    {n:'櫻花蝦炒飯',t:['米飯','海鮮'],p:220},{n:'酥炸花枝',t:['油炸','海鮮'],p:260}]},
 
- {id:'canton',hours:{open:18,close:26},name:'粵菜館',pin:'canton',mood:'家庭聚餐與宴席，講究火候與層次',
+ {id:'canton',hours:{open:18,close:26,peaks:[[18.5,20.5],[21,22.5]]},name:'粵菜館',pin:'canton',mood:'家庭聚餐與宴席，講究火候與層次',
   brief:'場景為粵菜館，環境強調宴席互動與多樣化菜餚搭配，一桌常同時上多道菜。',
   drinks:['gaoliang','beerBottle','shaoxing','whisky','redHouse','orange','guava','oolongHot'],
   menu:[
@@ -613,7 +613,7 @@ const RESTAURANTS=[
    {n:'佛跳牆',t:['湯品','濃醬'],p:1580},{n:'避風塘炒蟹',t:['海鮮','蒜香','油炸','辣'],p:1180},
    {n:'楊枝甘露',t:['甜點'],p:150},{n:'乾炒牛河',t:['麵食','紅肉','重油'],p:280}]},
 
- {id:'japan',hours:{open:18,close:26},name:'日式料理',pin:'japan',mood:'安靜、講究禮儀，重視食材原味與季節感',
+ {id:'japan',hours:{open:18,close:26,peaks:[[19,21],[22,23.5]]},name:'日式料理',pin:'japan',mood:'安靜、講究禮儀，重視食材原味與季節感',
   brief:'場景為日式料理店，環境強調禮儀、細緻互動與料理搭配，顧客注重細節。',
   drinks:['sake','daiginjo','plum','shochu','beer','whisky','gaoliang','oolong'],
   menu:[
@@ -774,6 +774,71 @@ const EVENTS=[
      {a:'照客人朋友說的開 Cabernet。',s:3}],
   why:'肯定 → 解釋 → 轉向推薦，不直接否定顧客。'},
 ];
+
+/* ── 各餐廳專屬事件卡（通用卡仍會抽到） ── */
+const EVENTS_BY_REST=[
+ {r:'hotfry',t:'隔壁桌划酒拳越喊越大聲，你這桌的客人皺起眉頭。',
+  o:[{a:'先向客人致意，調整上酒節奏並提醒隔壁桌音量，必要時協助換到安靜一點的位置。',s:10},
+     {a:'裝作沒聽到，繼續倒酒。',s:0},
+     {a:'跟著一起鬧，炒熱氣氛。',s:2}],
+  why:'熱炒店再吵，侍酒師仍要維護這一桌的用餐體驗。'},
+ {r:'hotfry',t:'客人說：「生啤給我們一桶比較划算吧？直接上！」',
+  o:[{a:'先確認人數與用餐時間，說明一次上太多會走氣，建議分批上才喝得到最好的狀態。',s:10},
+     {a:'直接上一桶，客人說了算。',s:3},
+     {a:'拒絕並改推高粱。',s:0}],
+  why:'啤酒的溫度與氣泡會隨時間流失，分批供應才是專業做法。'},
+ {r:'hotfry',t:'辣炒海瓜子上桌，客人一口高粱接一口辣，臉已經紅了。',
+  o:[{a:'主動送上冰水與熱茶，建議把高粱換成生啤或梅子酒再搭辣菜。',s:10},
+     {a:'再幫他斟一杯高粱。',s:0},
+     {a:'什麼都不做，客人自己會停。',s:2}],
+  why:'辣味加高酒精會放大灼熱感，也容易讓客人過量。'},
+ {r:'hotfry',t:'客人自己走到冰箱拿了兩瓶啤酒。',
+  o:[{a:'過去幫忙開瓶並補上乾淨杯子，順口說明店內可以代勞。',s:10},
+     {a:'當作沒看到，反正沒有回扣。',s:1},
+     {a:'出聲制止客人。',s:0}],
+  why:'即使那一瓶沒有回扣，服務品質仍然是評分的一部分。'},
+ {r:'canton',t:'主人家臨時加了一道佛跳牆，說「酒再開一支吧」。',
+  o:[{a:'先確認桌上還剩多少酒，說明佛跳牆濃郁、建議紹興或結構足的紅酒，再問要不要加開。',s:10},
+     {a:'立刻開最貴的一支。',s:2},
+     {a:'說現在不方便加酒。',s:0}],
+  why:'宴席加菜要重新評估整桌搭配，不是單純加量。'},
+ {r:'canton',t:'長輩說：「紹興要燙過才好喝，你們會溫酒嗎？」',
+  o:[{a:'說明可溫到約 40–45°C，並以溫酒壺隔水加熱後再分酒。',s:10},
+     {a:'「我們這裡都是冰的。」',s:0},
+     {a:'直接把紹興放進微波爐加熱。',s:0}],
+  why:'紹興溫飲能柔化酒精感、帶出米香，溫度過高反而讓香氣揮發。'},
+ {r:'canton',t:'十人圓桌，主人示意你「先幫長輩倒」。',
+  o:[{a:'從主客與長輩開始，順時針繞桌，主人最後，每杯約七分滿。',s:10},
+     {a:'從離自己最近的開始倒。',s:2},
+     {a:'把酒瓶放在轉盤上請大家自己倒。',s:0}],
+  why:'宴席敬酒順序是華人餐桌禮儀的重點，也是評分項目。'},
+ {r:'canton',t:'客人問：「燒味拼盤配紅酒會不會太油？」',
+  o:[{a:'說明燒味的油脂需要酸度或單寧平衡，建議中等酒體紅酒，並搭配熱烏龍茶交替飲用。',s:10},
+     {a:'「燒味配什麼都可以。」',s:2},
+     {a:'建議改喝烈酒去油。',s:0}],
+  why:'去油膩靠酸度、單寧與熱茶，不是酒精濃度。'},
+ {r:'japan',t:'客人指著酒單問：「這支大吟釀要冷的還是熱的？」',
+  o:[{a:'說明大吟釀香氣細緻，建議 8–10°C 冷藏飲用，溫度過高香氣會散掉。',s:10},
+     {a:'「清酒都燙過比較好喝。」',s:0},
+     {a:'「看您喜歡。」就結束話題。',s:2}],
+  why:'吟釀系適合冷飲，純米、本釀造才較適合溫燗。'},
+ {r:'japan',t:'客人點了生魚片拼盤，卻想配威士忌。',
+  o:[{a:'不否定客人，說明生食細緻、酒精感強會蓋過鮮味，建議先以清酒搭生魚片，主菜後再上威士忌。',s:10},
+     {a:'「生魚片不能配威士忌。」',s:0},
+     {a:'直接上威士忌不多說。',s:3}],
+  why:'用上酒順序化解衝突，比直接否定顧客更專業。'},
+ {r:'japan',t:'倒清酒時客人雙手舉杯等著，德利快空了。',
+  o:[{a:'雙手持德利、杯口不碰瓶口，倒至八分滿；空了先致意再換新的一支。',s:10},
+     {a:'單手倒到滿出來。',s:0},
+     {a:'把德利交給客人自己倒。',s:2}],
+  why:'日式酌酒講究雙手、適量與不碰杯口。'},
+ {r:'japan',t:'客人說：「天婦羅配清酒會不會太膩？」',
+  o:[{a:'建議酸度較高的生酛或氣泡清酒，也可搭生啤酒，用氣泡與酸度清口。',s:10},
+     {a:'「炸物就是要配茶。」',s:3},
+     {a:'建議改點燒酎純飲。',s:2}],
+  why:'油炸物需要酸度或氣泡來化解厚重感。'},
+];
+EVENTS_BY_REST.forEach(e=>EVENTS.push(e));
 
 /* ── 侍酒流程正確順序 ─────────────────────────────────────── */
 const SERVICE_STEPS=['展示酒標','確認酒款','開瓶','試酒','正式倒酒','依服務順序','補酒','收尾'];
@@ -1229,7 +1294,7 @@ function attachSTT(btn,target){
 const hash=s=>{let h=5381;for(const c of s)h=((h<<5)+h+c.charCodeAt(0))>>>0;return 'h'+h.toString(36);};
 function newSave(email,acc){ return {
   email,acc,exp:0,cash:2000,bank:0,stamina:100,
-  day:1,weekday:1,minutes:10*60,avatar:null,               // 星期一 10:00
+  day:1,weekday:1,minutes:10*60,avatar:null,prog:{french:1,hotfry:1,canton:1,japan:1},               // 星期一 10:00
   level:1,cleared:[],badges:[],inv:[{id:'phone'},{id:'card'}],
   history:[],scoreLog:[],studied:0,mute:false,sfx:true,equip:[],study:{},atDoor:null,zoomPref:{},hurtDays:0,lastPay:0,
 };}
@@ -1363,10 +1428,10 @@ function enterGame(u){
 }
 
 function resumeChoice(u){
-  const lv=LEVELS[S.level-1];
+  progAll();
   modal('<h3>歡迎回來，'+S.acc.replace(/^[A-Za-z]\d+/,'')+'</h3>'+
     '<div class="panel" style="margin:10px 0">'+
-    '<div class="score-line"><span>目前進度</span><b>第 '+S.level+' 關（'+REST[lv.rest].name+' '+lv.sub+'/5）</b></div>'+
+    '<div class="score-line"><span>目前進度</span><b>'+progressText()+'</b></div>'+
     '<div class="score-line"><span>遊戲天數</span><b>第 '+S.day+' 天</b></div>'+
     '<div class="score-line"><span>現金／存款</span><b>'+money(S.cash)+' ／ '+money(S.bank)+'</b></div>'+
     '<div class="score-line" style="border-bottom:0"><span>經驗</span><b>'+S.exp+'</b></div></div>'+
@@ -1417,7 +1482,7 @@ function updHUD(){
   const lateBox=$('#hLate');
   if(lateBox){
     lateBox.classList.toggle('hidden',!late);
-    if(late){ lateBox.textContent='該去'+REST[LEVELS[S.level-1].rest].name+'上班了';
+    if(late){ lateBox.textContent=REST[currentRest()].name+' 營業中';
       if(Date.now()-(S._lateBeep||0)>15000){ S._lateBeep=Date.now(); Sfx.play('alarm'); } }
   }
   $('#hStam').style.width=S.stamina.toFixed(0)+'%';
@@ -1426,7 +1491,7 @@ function updHUD(){
   const weak=S.stamina<10;
   $('#hStamBox').classList.toggle('weak',weak); $('#hStamN').classList.toggle('weak',weak);
   $('#hCash').textContent=money(S.cash); $('#hBank').textContent=money(S.bank);
-  $('#hLv').textContent=S.level+' / 20'; $('#hExp').textContent=S.exp;
+  $('#hLv').textContent=(typeof totalCleared==='function'?totalCleared():0)+' / 20'; $('#hExp').textContent=S.exp;
   document.body.classList.toggle('lowstam',S.stamina<=15);
 }
 function collapse(){
@@ -1448,7 +1513,30 @@ function gameOver(html){
 }
 
 /* ── 村莊地圖 ─────────────────────────────────────────────── */
-function currentRest(){ return LEVELS[S.level-1].rest; }
+/* 四間餐廳各走各的五關，一開始就全部開放 */
+function progAll(){
+  if(!S.prog){                                  // 舊存檔轉換：依原本的 1–20 關推回各店進度
+    S.prog={french:1,hotfry:1,canton:1,japan:1};
+    const done=Math.max(0,(S.level||1)-1);
+    OPEN_ORDER.forEach((id,i)=>{ S.prog[id]=clamp(done-i*5+1,1,5); });
+  }
+  OPEN_ORDER.forEach(id=>{ S.prog[id]=clamp(S.prog[id]||1,1,5); });
+  return S.prog;
+}
+const progOf=id=>progAll()[id]||1;
+const restCleared=id=>!!(S.cleared||[]).includes('done:'+id);
+function levelFor(id){ const sub=progOf(id);
+  return LEVELS.find(l=>l.rest===id&&l.sub===sub)||LEVELS[0]; }
+function totalCleared(){ return OPEN_ORDER.reduce((a,id)=>a+(progOf(id)-1)+(restCleared(id)?1:0),0); }
+function syncLevel(){ S.level=clamp(totalCleared()+1,1,20); return S.level; }
+function progressText(){ return OPEN_ORDER.map(id=>REST[id].name+' '+(restCleared(id)?'5/5 ✔':progOf(id)+'/5')).join('　'); }
+/* 村莊箭頭指向：現在營業中、而且還沒全破的那一間；都沒營業就指進度最前面的 */
+function currentRest(){
+  const open=OPEN_ORDER.filter(id=>inHours(id)&&!restCleared(id));
+  if(open.length) return open.sort((a,b)=>progOf(a)-progOf(b))[0];
+  const left=OPEN_ORDER.filter(id=>!restCleared(id));
+  return (left.length?left:OPEN_ORDER).sort((a,b)=>progOf(a)-progOf(b))[0];
+}
 function renderVillage(){ startVillage(); }
 
 /* ── 角色選擇 ── */
@@ -1481,7 +1569,7 @@ function openAccount(){
    '<label class="field"><span>新密碼（留白表示不改）</span><input id="ac_pw" type="password"></label>'+
    '<p class="err" id="ac_err"></p><button class="btn primary" id="ac_save">儲存變更</button>'+
    '<hr class="rule"><p class="small muted">建立時間：'+new Date(u.created).toLocaleString('zh-TW')+
-   '<br>目前等級：第 '+S.level+' 關（'+REST[LEVELS[S.level-1].rest].name+'）　經驗 '+S.exp+
+   '<br>目前進度：'+progressText()+'　經驗 '+S.exp+
    '<br>狀態：'+(S.stamina>60?'狀況良好':S.stamina>15?'有點累':'快撐不住了')+'</p></div>'+
    '<div class="panel"><h3>頭像／角色</h3>'+
    '<div class="char-avatar" style="background-image:url('+(window.__SPR__[S.avatar]||'')+')"></div>'+
@@ -1523,14 +1611,14 @@ function placeHead(t,sub){ return '<div class="view-head"><h2>'+t+'</h2><span cl
 
 function pHome(){
   if(typeof World!=='undefined') World.stop();
-  const lv=LEVELS[S.level-1];
+  progAll();
   $('#placeBody').innerHTML=placeHead('玩家住所','睡覺補體力、看日記、存檔')+
   '<div class="grid2"><div class="panel"><h3>床</h3>'+
    '<p class="small muted">睡滿 8 小時體力補到 100%；不足 8 小時依比例補；超過 8 小時也只補到 100%。</p>'+
    '<label class="field"><span>睡幾小時</span><input id="sleepH" type="number" min="1" max="12" value="8"></label>'+
    '<button class="btn primary" id="btnSleep">睡覺並存檔</button></div>'+
   '<div class="panel"><h3>書桌上的日記</h3>'+
-   '<p class="small">目前進度：<b>'+REST[lv.rest].name+' 第 '+lv.sub+' 關</b>（全 '+S.level+'/20）<br>'+
+   '<p class="small">目前進度：<b>'+progressText()+'</b><br>'+
    '經驗 '+S.exp+'　現金 '+money(S.cash)+'　存款 '+money(S.bank)+'　道具 '+S.inv.length+' 件</p>'+
    '<div class="inv-scroll small muted">'+(S.history.slice(-14).reverse().map(h=>'<div class="list-row"><span>'+h+'</span></div>').join('')||'還沒有紀錄。')+'</div>'+
    '<hr class="rule"><div style="display:flex;gap:8px;flex-wrap:wrap">'+
@@ -1548,7 +1636,7 @@ function pHome(){
       updHUD(); Sfx.play('alarm');
       modal('<h3>⏰ 鬧鐘響了</h3><p>星期'+WD[S.weekday%7]+' 早上 9:00，新的一天開始。</p>'+
         '<p class="small muted">睡了 '+hours.toFixed(1)+' 小時，體力回到 '+S.stamina.toFixed(0)+'%。今天的班在 '+
-        REST[LEVELS[S.level-1].rest].name+'（'+hoursText(LEVELS[S.level-1].rest)+'）。</p>'+
+        REST[currentRest()].name+'（'+hoursText(currentRest())+'）。</p>'+
         '<button class="btn primary" id="wakeUp">起床</button>',{dismiss:false});
       $('#wakeUp').onclick=()=>{ closeModals(); fade(()=>{ show('village'); startVillage(); }); };
     },700);
@@ -2020,8 +2108,9 @@ function startVillage(){
     }
     if(Math.hypot(World.player.x-p.x,World.player.y-p.y)<44) return showInventory();
     modal('<h3>'+(PLAYER_CHARS.find(c=>c.id===S.avatar)||{n:'侍酒師'}).n+'</h3>'+
-      '<p class="small">體力 '+S.stamina.toFixed(0)+'%　現金 '+money(S.cash)+'　關卡 '+S.level+' / 20</p>'+
-      '<p class="small muted">目前班表：'+REST[currentRest()].name+'　長按自己可以打開道具窗</p>'+
+      '<p class="small">體力 '+S.stamina.toFixed(0)+'%　現金 '+money(S.cash)+'　已完成 '+totalCleared()+' / 20 關</p>'+
+      '<p class="small">'+progressText()+'</p>'+
+      '<p class="small muted">長按自己可以打開道具窗</p>'+
       '<button class="btn primary" id="openInv">打開道具窗</button> <button class="btn" onclick="closeModals()">關上</button>');
     const oi=$('#openInv'); if(oi) oi.onclick=()=>{ closeModals(); showInventory(); };
   },{w:WW,h:WH});
@@ -2081,6 +2170,23 @@ function enterDoor(id){
 }
 
 /* ══════════ 餐廳 ══════════ */
+/* 各餐廳的場內風格：大桌型態、地板牆面、椅子、餐位擺設 */
+const ROOM={
+  french:{big:'long', floorA:'#4a352c',floorB:'#553d31', base:'#3b2a24', wall:'#2f2320', head:'#241a1c',
+          chair:'chair', cloth:'#fbf8f1', clothEdge:'#efe9dc', setting:'french', center:null,
+          tableTop:'#7a5a3c', label:'長桌10人'},
+  hotfry:{big:'round', floorA:'#6d675c',floorB:'#767064', base:'#5d584f', wall:'#4a3a2c', head:'#2a2018',
+          chair:'stool', cloth:null, clothEdge:null, setting:'hotfry', center:'tissue',
+          tableTop:'#cfd8c2', label:'圓桌10人'},
+  canton:{big:'round', floorA:'#6b2f2c',floorB:'#74352f', base:'#5c2724', wall:'#4a241f', head:'#33161a',
+          chair:'chair', cloth:'#c33a3f', clothEdge:'#9e2a30', setting:'canton', center:'lazy',
+          tableTop:'#8a4a3a', label:'圓桌10人'},
+  japan:{big:'low', floorA:'#8f8f5c',floorB:'#868654', base:'#7d7d4e', wall:'#6a5a44', head:'#2e2820',
+         chair:'cushion', cloth:null, clothEdge:null, setting:'japan', center:'soy',
+         tableTop:'#a9794a', label:'和式長桌10人'},
+};
+const roomOf=()=>ROOM[(RS&&RS.rest.id)||'french']||ROOM.french;
+const isBig=t=>t.k!=='sq';
 const RTABLES=[
   {k:'long',x:250,y:225,cap:10},{k:'long',x:752,y:225,cap:10},
   {k:'sq',x:150,y:432,cap:4},{k:'sq',x:370,y:432,cap:4},{k:'sq',x:630,y:432,cap:4},{k:'sq',x:850,y:432,cap:4},
@@ -2088,11 +2194,16 @@ const RTABLES=[
 ];
 /* 座位：方桌 0 上、1 左、2 右、3 下；長桌 0–4 上排、5–9 下排 */
 function seatPos(t,i){
-  if(t.k==='long'){ const row=i<5?0:1, k=i%5; return {x:t.x-104+k*52, y:t.y+(row?104:-66)}; }
+  if(t.k==='round'){ const a=-Math.PI/2+i*(Math.PI*2/10);
+    return {x:t.x+Math.cos(a)*122, y:t.y+Math.sin(a)*86+10}; }
+  if(t.k==='long'||t.k==='low'){ const row=i<5?0:1, k=i%5;
+    const dy=t.k==='low'?(row?92:-58):(row?104:-66);
+    return {x:t.x-104+k*52, y:t.y+dy}; }
   return [{x:t.x,y:t.y-56},{x:t.x-74,y:t.y+4},{x:t.x+74,y:t.y+4},{x:t.x,y:t.y+86}][i%4];
 }
 function seatOrder(t,size){
-  if(t.k==='long'){ const n=Math.min(size,10), top=Math.min(n,5), out=[];
+  if(t.k==='round') return Array.from({length:Math.min(size,10)},(_,i)=>i);
+  if(t.k==='long'||t.k==='low'){ const n=Math.min(size,10), top=Math.min(n,5), out=[];
     for(let i=0;i<top;i++) out.push(i);
     for(let i=0;i<n-top;i++) out.push(5+i);
     return out; }
@@ -2103,17 +2214,21 @@ function seatOrder(t,size){
 }
 function faceTable(t,p){
   const dx=p.x-t.x, dy=p.y-t.y;
-  if(t.k==='long') return dy<0?'down':'up';
+  if(t.k==='round') return Math.abs(dx)>Math.abs(dy)?(dx>0?'left':'right'):(dy>0?'up':'down');
+  if(t.k==='long'||t.k==='low') return dy<0?'down':'up';
   return Math.abs(dx)>Math.abs(dy)?(dx>0?'left':'right'):(dy>0?'up':'down');
 }
 /* 餐位擺設：以用餐者為基準，up＝遠離自己那側，right＝自己的右手邊 */
 const FACE_VEC={down:{u:[0,1],r:[-1,0]},up:{u:[0,-1],r:[1,0]},right:{u:[1,0],r:[0,1]},left:{u:[-1,0],r:[0,-1]}};
 /* 餐位擺設的錨點：固定落在桌面上，而不是椅子上 */
 function settingAnchor(t,i){
-  if(t.k==='long'){ const far=i<5, p=seatPos(t,i);
-    return {x:p.x, y:t.y+(far?-24:24), f:far?'down':'up'}; }
-  return [{x:t.x,y:t.y-18,f:'down'},{x:t.x-32,y:t.y,f:'right'},
-          {x:t.x+32,y:t.y,f:'left'},{x:t.x,y:t.y+18,f:'up'}][i%4];
+  if(t.k==='round'){ const p=seatPos(t,i), a=Math.atan2(p.y-10-t.y,p.x-t.x);
+    return {x:t.x+Math.cos(a)*86, y:t.y+Math.sin(a)*58+8, f:faceTable(t,p)}; }
+  if(t.k==='long'||t.k==='low'){ const far=i<5, p=seatPos(t,i);
+    const off=t.k==='low'?20:24;
+    return {x:p.x, y:t.y+(far?-off:off), f:far?'down':'up'}; }
+  return [{x:t.x,y:t.y-21,f:'down',s:0.78},{x:t.x-37,y:t.y+2,f:'right',s:0.78},
+          {x:t.x+37,y:t.y+2,f:'left',s:0.78},{x:t.x,y:t.y+22,f:'up',s:0.78}][i%4];
 }
 function drawSetting(ctx,sx,sy,facing){
   const v=FACE_VEC[facing]||FACE_VEC.down;
@@ -2144,19 +2259,106 @@ function drawSetting(ctx,sx,sy,facing){
   ctx.beginPath(); ctx.ellipse(gl.x,gl.y+9,4.5,2,0,0,7); ctx.stroke();
 }
 function drawTableTop(ctx,t){
-  const fine=RS&&RS.rest.id==='french';
-  if(t.k==='long'){
+  const R=roomOf();
+  if(t.k==='round'){
+    ctx.fillStyle='rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(t.x,t.y+18,116,74,0,0,7); ctx.fill();
+    ctx.fillStyle=R.tableTop; ctx.beginPath(); ctx.ellipse(t.x,t.y,112,70,0,0,7); ctx.fill();
+    if(R.cloth){ ctx.fillStyle=R.cloth; ctx.beginPath(); ctx.ellipse(t.x,t.y-2,108,66,0,0,7); ctx.fill();
+      ctx.strokeStyle=R.clothEdge; ctx.lineWidth=3; ctx.beginPath(); ctx.ellipse(t.x,t.y-2,100,60,0,0,7); ctx.stroke(); }
+    else { ctx.fillStyle='#e9eee0'; ctx.beginPath(); ctx.ellipse(t.x,t.y-3,100,61,0,0,7); ctx.fill(); }
+  } else if(t.k==='low'){
+    ctx.fillStyle='rgba(0,0,0,.28)'; ctx.fillRect(t.x-132,t.y-40,264,92);
+    ctx.fillStyle='#8b6238'; ctx.fillRect(t.x-130,t.y-44,260,88);
+    ctx.fillStyle=R.tableTop; ctx.fillRect(t.x-124,t.y-38,248,76);
+    ctx.strokeStyle='rgba(90,60,34,.5)'; ctx.lineWidth=1;
+    for(let i=1;i<6;i++){ ctx.beginPath(); ctx.moveTo(t.x-124+i*41,t.y-38); ctx.lineTo(t.x-124+i*41,t.y+38); ctx.stroke(); }
+  } else if(t.k==='long'){
     ctx.fillStyle='rgba(0,0,0,.32)'; ctx.fillRect(t.x-136,t.y-46,272,110);
-    ctx.fillStyle='#7a5a3c'; ctx.fillRect(t.x-134,t.y-50,268,104);
-    if(fine){ ctx.fillStyle='#fbf8f1'; ctx.fillRect(t.x-138,t.y-54,276,112);
-      ctx.fillStyle='#efe9dc'; ctx.fillRect(t.x-138,t.y+50,276,8); }
+    ctx.fillStyle=R.tableTop; ctx.fillRect(t.x-134,t.y-50,268,104);
+    if(R.cloth){ ctx.fillStyle=R.cloth; ctx.fillRect(t.x-138,t.y-54,276,112);
+      ctx.fillStyle=R.clothEdge; ctx.fillRect(t.x-138,t.y+50,276,8); }
     else { ctx.fillStyle='#f0e6d2'; ctx.fillRect(t.x-126,t.y-44,252,92); }
   } else {
     ctx.fillStyle='rgba(0,0,0,.32)'; ctx.fillRect(t.x-58,t.y-32,116,74);
-    ctx.fillStyle='#7a5a3c'; ctx.fillRect(t.x-56,t.y-36,112,68);
-    if(fine){ ctx.fillStyle='#fbf8f1'; ctx.fillRect(t.x-60,t.y-40,120,76);
-      ctx.fillStyle='#efe9dc'; ctx.fillRect(t.x-60,t.y+30,120,6); }
-    else { ctx.fillStyle='#f0e6d2'; ctx.fillRect(t.x-48,t.y-30,96,56); }
+    ctx.fillStyle=R.tableTop; ctx.fillRect(t.x-56,t.y-36,112,68);
+    if(R.cloth){ ctx.fillStyle=R.cloth; ctx.fillRect(t.x-60,t.y-40,120,76);
+      ctx.fillStyle=R.clothEdge; ctx.fillRect(t.x-60,t.y+30,120,6); }
+    else if(R.setting==='japan'){ ctx.fillStyle=R.tableTop; ctx.fillRect(t.x-52,t.y-32,104,60);
+      ctx.strokeStyle='rgba(90,60,34,.45)'; ctx.lineWidth=1;
+      for(let i=1;i<4;i++){ ctx.beginPath(); ctx.moveTo(t.x-52+i*26,t.y-32); ctx.lineTo(t.x-52+i*26,t.y+28); ctx.stroke(); } }
+    else { ctx.fillStyle='#e9eee0'; ctx.fillRect(t.x-50,t.y-31,100,58); }
+  }
+  drawCenterpiece(ctx,t,R);
+}
+/* 桌子中央的小道具：衛生紙盒／轉盤／醬油壺 */
+function drawCenterpiece(ctx,t,R){
+  if(!R.center) return;
+  if(R.center==='lazy' && t.k==='round'){
+    ctx.fillStyle='rgba(236,240,246,.55)'; ctx.beginPath(); ctx.ellipse(t.x,t.y-2,44,28,0,0,7); ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.65)'; ctx.lineWidth=2; ctx.beginPath(); ctx.ellipse(t.x,t.y-2,44,28,0,0,7); ctx.stroke();
+    ctx.fillStyle='#d8c9a6'; ctx.beginPath(); ctx.ellipse(t.x-14,t.y-4,11,7,0,0,7); ctx.fill();   // 茶壺
+    ctx.fillStyle='#b9a98a'; ctx.fillRect(t.x-4,t.y-7,3,5);
+    ctx.fillStyle='#e7ddc6'; ctx.beginPath(); ctx.ellipse(t.x+16,t.y-2,9,6,0,0,7); ctx.fill();
+  } else if(R.center==='tissue'){
+    ctx.fillStyle='#e8e2d4'; ctx.fillRect(t.x-14,t.y-10,28,18);
+    ctx.strokeStyle='#bdb49f'; ctx.lineWidth=1; ctx.strokeRect(t.x-14,t.y-10,28,18);
+    ctx.fillStyle='#fff'; ctx.fillRect(t.x-5,t.y-14,10,5);
+    ctx.fillStyle='#8a5a3a'; ctx.fillRect(t.x+18,t.y-12,8,20);      // 筷筒
+    ctx.fillStyle='#d9c9a2'; ctx.fillRect(t.x+20,t.y-18,2,8); ctx.fillRect(t.x+23,t.y-17,2,7);
+  } else if(R.center==='soy'){
+    ctx.fillStyle='#4a3b2c'; ctx.fillRect(t.x-6,t.y-10,12,16);
+    ctx.fillStyle='#2e241c'; ctx.fillRect(t.x-3,t.y-14,6,5);
+    ctx.fillStyle='#d9d2bd'; ctx.beginPath(); ctx.ellipse(t.x+16,t.y-2,8,5,0,0,7); ctx.fill();
+  }
+}
+/* 各菜系的餐位擺設 */
+function drawSettingFor(ctx,x,y,facing,kind,sc){
+  const k=sc||1;
+  const v=FACE_VEC[facing]||FACE_VEC.down;
+  const P=(a,b)=>({x:x+v.u[0]*a*k+v.r[0]*b*k, y:y+v.u[1]*a*k+v.r[1]*b*k});
+  const r=n=>n*k;
+  const stroke=(p,len,col,wd)=>{ ctx.strokeStyle=col; ctx.lineWidth=wd;
+    ctx.beginPath(); ctx.moveTo(p.x-v.u[0]*len,p.y-v.u[1]*len); ctx.lineTo(p.x+v.u[0]*len,p.y+v.u[1]*len); ctx.stroke(); };
+  if(kind==='french') return drawSetting(ctx,x,y,facing);
+  if(kind==='canton'){
+    const plate=P(0,0);
+    ctx.fillStyle='#f6f2e8'; ctx.beginPath(); ctx.arc(plate.x,plate.y,r(10),0,7); ctx.fill();   // 骨碟
+    ctx.strokeStyle='#cfc4ad'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(plate.x,plate.y,r(6),0,7); ctx.stroke();
+    const ch=P(0,14); stroke(ch,r(8),'#d8c49a',2.2);                                            // 筷子
+    ctx.fillStyle='#7d6a52'; ctx.beginPath(); ctx.arc(ch.x,ch.y,r(2.6),0,7); ctx.fill();        // 筷架
+    const cup=P(16,-12); ctx.fillStyle='#ead9b8'; ctx.beginPath(); ctx.arc(cup.x,cup.y,r(5),0,7); ctx.fill();   // 茶杯
+    const wine=P(16,4); ctx.fillStyle='#e6ecf2'; ctx.beginPath(); ctx.arc(wine.x,wine.y,r(3.6),0,7); ctx.fill(); // 小酒杯
+    return;
+  }
+  if(kind==='japan'){
+    const plate=P(0,0);
+    ctx.fillStyle='#efe9dc'; ctx.fillRect(plate.x-r(9),plate.y-r(6),r(18),r(12));                // 小皿
+    ctx.strokeStyle='#cfc4ad'; ctx.lineWidth=1; ctx.strokeRect(plate.x-r(9),plate.y-r(6),r(18),r(12));
+    const ch=P(0,15); stroke(ch,r(9),'#8a6a46',2.4);                                            // 木筷
+    ctx.fillStyle='#4a3b2c'; ctx.beginPath(); ctx.arc(ch.x,ch.y,r(2.4),0,7); ctx.fill();        // 箸置
+    const oshibori=P(16,14); ctx.fillStyle='#f3f1ea'; ctx.beginPath(); ctx.ellipse(oshibori.x,oshibori.y,r(7),r(4),0,0,7); ctx.fill();
+    const choko=P(15,-8); ctx.fillStyle='#e8eef2'; ctx.beginPath(); ctx.arc(choko.x,choko.y,r(4),0,7); ctx.fill();
+    ctx.strokeStyle='#b9c6cf'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(choko.x,choko.y,r(4),0,7); ctx.stroke();
+    return;
+  }
+  // 熱炒：免洗碗、塑膠杯、免洗筷
+  const bowl=P(0,0);
+  ctx.fillStyle='#f4f1e6'; ctx.beginPath(); ctx.arc(bowl.x,bowl.y,r(9),0,7); ctx.fill();
+  ctx.strokeStyle='#d6cfbc'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(bowl.x,bowl.y,r(5),0,7); ctx.stroke();
+  const ch=P(0,13); stroke(ch,r(8),'#e0cfa4',2.2);
+  const cup=P(14,-10); ctx.fillStyle='rgba(222,236,244,.9)'; ctx.beginPath(); ctx.arc(cup.x,cup.y,r(5),0,7); ctx.fill();
+}
+/* 椅子：法式餐椅／塑膠圓凳／座墊 */
+function drawChair(ctx,p,on,kind){
+  if(kind==='stool'){
+    ctx.fillStyle=on?'#c0392b':'#8c3b32'; ctx.beginPath(); ctx.ellipse(p.x,p.y,11,8,0,0,7); ctx.fill();
+    ctx.fillStyle='#5b2a24'; ctx.fillRect(p.x-2,p.y+5,4,6);
+  } else if(kind==='cushion'){
+    ctx.fillStyle=on?'#8d5a4a':'#6b473c'; ctx.fillRect(p.x-12,p.y-8,24,17);
+    ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=1; ctx.strokeRect(p.x-12,p.y-8,24,17);
+  } else {
+    ctx.fillStyle=on?'#6d4a34':'#4a3428'; ctx.fillRect(p.x-11,p.y-7,22,17);
+    ctx.fillStyle='#3c2a20'; ctx.fillRect(p.x-11,p.y+8,22,3);
   }
 }
 function startRestWorld(){
@@ -2179,19 +2381,21 @@ function startRestWorld(){
   World.waiter={x:930,y:360,dir:'left',f:1,sprite:'n11',home:{x:930,y:360},path:[]};
   const solid=(x,y)=>{
     if(x<40||x>960||y<150||y>716) return true;
-    return RTABLES.some(t=>t.k==='long'?(Math.abs(x-t.x)<140&&Math.abs(y-t.y)<56):(Math.abs(x-t.x)<62&&Math.abs(y-t.y)<42));
+    return RTABLES.some(t=>t.k==='round'?Math.hypot(x-t.x,(y-t.y)*1.5)<112
+      :isBig(t)?(Math.abs(x-t.x)<136&&Math.abs(y-t.y)<52)
+      :(Math.abs(x-t.x)<62&&Math.abs(y-t.y)<42));
   };
   const cvs=$('#rcvs');
   bindTouch(cvs,p=>{
     const P=World.player;
-    const idx=RTABLES.findIndex(t=>t.k==='long'?(Math.abs(p.x-t.x)<150&&Math.abs(p.y-t.y)<110):Math.hypot(p.x-t.x,p.y-t.y)<118);
-    if(idx>=0){ const t=RTABLES[idx], gy=Math.min(700,t.y+(t.k==='long'?152:118));
+    const idx=RTABLES.findIndex(t=>isBig(t)?(Math.abs(p.x-t.x)<150&&Math.abs(p.y-t.y)<120):Math.hypot(p.x-t.x,p.y-t.y)<118);
+    if(idx>=0){ const t=RTABLES[idx], gy=Math.min(700,t.y+(isBig(t)?152:118));
       P.target={x:t.x,y:gy}; P.onReach=()=>tableAction(RS.tables[idx]); World.camFree=false; World.markTap(t.x,gy); return; }
     if(p.x<64){ P.target={x:80,y:clamp(p.y,170,700)}; P.onReach=()=>pickHouseTools(); World.camFree=false; World.markTap(80,p.y); return; }
     P.target={x:clamp(p.x,60,940),y:clamp(p.y,175,706)}; P.onReach=null; World.camFree=false; World.markTap(P.target.x,P.target.y);
   },p=>{
     if(Math.hypot(World.player.x-p.x,World.player.y-p.y)<44) return showInventory();
-    const idx=RTABLES.findIndex(t=>t.k==='long'?(Math.abs(p.x-t.x)<150&&Math.abs(p.y-t.y)<110):Math.hypot(p.x-t.x,p.y-t.y)<118);
+    const idx=RTABLES.findIndex(t=>isBig(t)?(Math.abs(p.x-t.x)<150&&Math.abs(p.y-t.y)<120):Math.hypot(p.x-t.x,p.y-t.y)<118);
     if(idx>=0) return tableInfo(RS.tables[idx]);
     modal('<h3>場內狀況</h3><p class="small">'+RS.rest.name+'　完成 '+RS.served+' / '+RS.lv.tables+' 桌　回扣 '+money(RS.tips)+'</p>'+
       '<p class="small muted">左側是廚房出菜口（店內器具放這裡），右側是收銀結帳台。</p><button class="btn" onclick="closeModals()">關上</button>');
@@ -2242,12 +2446,15 @@ function updateOrderPop(){
 function drawRestaurant(){
   const ctx=World.ctx; if(!ctx) return; const cvs=World.cvs;
   World.begin();
-  ctx.fillStyle='#3b2a24'; ctx.fillRect(0,0,cvs.width,cvs.height);
-  for(let y=60;y<740;y+=40) for(let x=30;x<980;x+=40){ ctx.fillStyle=((x+y)/40)%2?'#4a352c':'#553d31'; ctx.fillRect(x,y,40,40); }
-  ctx.fillStyle='#241a1c'; ctx.fillRect(0,0,cvs.width,60);
+  const R=roomOf();
+  ctx.fillStyle=R.base; ctx.fillRect(0,0,cvs.width,cvs.height);
+  for(let y=60;y<740;y+=40) for(let x=30;x<980;x+=40){
+    ctx.fillStyle=((x+y)/40)%2?R.floorA:R.floorB; ctx.fillRect(x,y,40,40);
+    if(R.setting==='japan'){ ctx.strokeStyle='rgba(60,54,30,.35)'; ctx.lineWidth=2; ctx.strokeRect(x+1,y+1,38,38); } }
+  ctx.fillStyle=R.head; ctx.fillRect(0,0,cvs.width,60);
   ctx.fillStyle='#c9a24a'; ctx.font='bold 20px serif'; ctx.textAlign='center';
   ctx.fillText(RS?RS.rest.name:'',500,38);
-  ctx.fillStyle='#2f2320'; ctx.fillRect(0,60,40,680); ctx.fillRect(960,60,40,680);
+  ctx.fillStyle=R.wall; ctx.fillRect(0,60,40,680); ctx.fillRect(960,60,40,680);
   ctx.fillStyle='#e0cfa8'; ctx.font='13px system-ui';
   ctx.save(); ctx.translate(20,380); ctx.rotate(-Math.PI/2); ctx.fillText('廚房出菜口（店內器具）',0,4); ctx.restore();
   ctx.save(); ctx.translate(980,380); ctx.rotate(Math.PI/2); ctx.fillText('收銀結帳台',0,4); ctx.restore();
@@ -2260,14 +2467,12 @@ function drawRestaurant(){
   RTABLES.forEach((t,i)=>{
     const tb=RS?RS.tables[i]:null;
     const order=tb&&tb.g?seatOrder(t,tb.g.size):[];
-    for(let s=0;s<t.cap;s++){ const p=seatPos(t,s);
-      ctx.fillStyle=order.includes(s)?'#6d4a34':'#4a3428';
-      ctx.fillRect(p.x-11,p.y-7,22,17); ctx.fillStyle='#3c2a20'; ctx.fillRect(p.x-11,p.y+8,22,3); }
+    const R2=roomOf();
+    for(let s=0;s<t.cap;s++) drawChair(ctx,seatPos(t,s),order.includes(s),R2.chair);
     drawTableTop(ctx,t);
-    if(RS&&RS.rest.id==='french') for(let s=0;s<t.cap;s++){
-      const a=settingAnchor(t,s); drawSetting(ctx,a.x,a.y,a.f); }
+    for(let s=0;s<t.cap;s++){ const a=settingAnchor(t,s); drawSettingFor(ctx,a.x,a.y,a.f,R2.setting,a.s||1); }
     ctx.textAlign='center'; ctx.font='bold 12px system-ui'; ctx.fillStyle='#6b563f';
-    ctx.fillText((i+1)+'號 '+(t.k==='long'?'長桌10人':'方桌4人'),t.x,t.y+(t.k==='long'?76:62));
+    ctx.fillText((i+1)+'號 '+(isBig(t)?roomOf().label:'方桌4人'),t.x,t.y+(isBig(t)?(t.k==='round'?96:76):62));
     if(tb&&tb.g) drawTableStatus(ctx,t,tb,i);
   });
   const ents=[World.waiter,World.player,...near];
@@ -2282,7 +2487,7 @@ function bar(ctx,x,y,w,h,pct,col,label){
   if(label){ ctx.font='10px system-ui'; ctx.textAlign='left'; ctx.fillStyle='#efe0c6'; ctx.fillText(label,x,y-4); }
 }
 function drawTableStatus(ctx,t,tb,i){
-  const top=t.k==='long' ? t.y+134 : t.y-78;
+  const top=isBig(t) ? t.y+(t.k==='round'?104:124) : t.y-78;
   if(tb.state==='seated'||tb.state==='ordered'){
     const pct=tb.state==='seated'?tb.t/T_ORDER:tb.t/T_SERVE;
     bar(ctx,t.x-48,top,96,8,pct,tb.state==='ordered'?(pct<.35?'#e0684a':'#cfa24a'):'#7fb98f');
@@ -2361,9 +2566,9 @@ const FLOW={
           w:{interview:20,choice:20,logic:20,story:20,service:10,crisis:10}},
   hotfry:{q:2,narr:['W','F','P'],steps:['介紹酒品','開瓶'],
           w:{interview:15,choice:25,logic:20,story:15,service:15,crisis:10}},
-  canton:{q:3,narr:['C','W','F','P'],steps:['展示酒標','確認酒款','開瓶','正式倒酒','依服務順序'],
+  canton:{q:3,narr:['C','W','F','P'],steps:['展示酒標','確認酒款','開瓶','溫酒與分酒','依服務順序'],
           w:{interview:20,choice:20,logic:20,story:20,service:10,crisis:10}},
-  japan:{q:4,narr:['C','W','F','S','P'],steps:['展示酒標','確認酒款','開瓶','試酒','正式倒酒','依服務順序'],
+  japan:{q:4,narr:['C','W','F','S','P'],steps:['展示酒標','確認酒溫','確認酒款','開瓶','正式倒酒','依服務順序'],
           w:{interview:20,choice:20,logic:20,story:20,service:10,crisis:10}},
 };
 const flowOf=id=>FLOW[id]||FLOW.french;
@@ -2372,10 +2577,7 @@ let RS=null, restTimer=null;
 const T_ORDER=16, T_SERVE=30;
 
 /* ── 開放與營業時間 ── */
-function isLocked(id){
-  if(DB.config.unlockAll) return false;
-  return OPEN_ORDER.indexOf(id)>OPEN_ORDER.indexOf(currentRest());
-}
+function isLocked(id){ return false; }   // 四間餐廳一開始就全部開放
 function hoursOf(id){ return REST[id].hours||{open:18,close:26}; }
 function hourNow(){ return S.minutes/60; }
 function inHours(id){
@@ -2394,16 +2596,16 @@ function hoursText(id){ const h=hoursOf(id);
 
 /* ── 進餐廳 ── */
 function enterRestaurant(id){
-  const lv=LEVELS[S.level-1], target=REST[lv.rest];
+  const lv=levelFor(id);
   const back=()=>{ closeModals(); if(World.mode!=='village') fade(()=>{ show('village'); startVillage(); }); };
-  if(id!==lv.rest && !DB.config.unlockAll){
-    const locked=isLocked(id);
-    modal('<h3>'+REST[id].name+(locked?'　🔒 尚未開放':'')+'</h3>'+
-      (locked?'<p>目前開放的是 <b>'+target.name+'</b>。把'+target.name+'的五個關卡全部完成之後，其他餐廳才會解鎖。</p>'
-             :'<p>你現在的班表排在 <b>'+target.name+'</b> 第 '+lv.sub+' 關。</p>')+
-      '<p class="small muted">村莊地圖上的紅色箭頭指的就是今天該去的地方。</p>'+
-      '<button class="btn primary" id="rvBack">回侍酒村</button>',{dismiss:false});
-    $('#rvBack').onclick=back; return;
+  if(restCleared(id)&&!DB.config.unlockAll){
+    modal('<h3>'+REST[id].name+'　已全數通關</h3><p>這間的五個關卡都完成了，可以重打練習，分數照樣會送進教師後台。</p>'+
+      '<p class="small muted">目前進度：'+progressText()+'</p>'+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" id="againGo">再練一次第 5 關</button>'+
+      '<button class="btn" id="rvBack">回侍酒村</button></div>',{dismiss:false});
+    $('#rvBack').onclick=back;
+    $('#againGo').onclick=()=>{ closeModals(); startShift(id,lv); };
+    return;
   }
   if(!inHours(id)){
     modal('<h3>還沒到營業時間</h3><p>現在是 '+fmtClock()+'，'+REST[id].name+' 的營業時間是 '+hoursText(id)+'。</p>'+
@@ -2427,7 +2629,8 @@ function startShift(id,lv){
   const r=REST[id];
   RS={rest:r,lv,flow:flowOf(id),tables:[],served:0,scores:[],tips:0,spawned:0,
       startMin:S.minutes,ended:false,inService:false,
-      houseTools: id==='hotfry' ? [] : ['corkscrew']};   // 熱炒店的啤酒開瓶器要自己去廚房拿
+      houseTools: id==='hotfry' ? [] : (id==='japan' ? ['corkscrew','warmer'] : ['corkscrew'])};
+  RTABLES.forEach((t,i)=>{ t.k = i<2 ? (ROOM[id]||ROOM.french).big : 'sq'; });   // 大桌型態依店別
   inShift=true; show('restaurant');
   $('#restName').textContent=r.name;
   $('#restLv').textContent='第 '+lv.no+' 關（'+r.name+' '+lv.sub+'/5）';
@@ -2456,16 +2659,22 @@ function endShift(){
   if(typeof Cloud!=='undefined'&&Cloud.on&&!(DB.users[S.email]&&DB.users[S.email].guest)) cloudScore(rec);
   S.scoreLog.push({level:lv.no,avg:+avg.toFixed(1),served:RS.served,pass});
   S.history.push('第'+S.day+'天：'+RS.rest.name+'第'+lv.sub+'關，服務 '+RS.served+' 桌，平均 '+avg.toFixed(1)+' 分'+(pass?'（通過）':'（未達標）'));
-  if(pass && S.level===lv.no){ S.cleared.push(lv.no); S.level=Math.min(20,S.level+1); }
+  if(pass){
+    progAll();
+    if(lv.sub>=5){ if(!restCleared(lv.rest)) S.cleared.push('done:'+lv.rest); }
+    else if(S.prog[lv.rest]===lv.sub) S.prog[lv.rest]=lv.sub+1;
+    syncLevel();
+  }
   let html='<h3>下班了</h3><div class="panel" style="margin:10px 0">'+
    '<div class="score-line"><span>完成桌數</span><b>'+RS.served+' / '+lv.tables+'</b></div>'+
    '<div class="score-line"><span>平均得分</span><b>'+avg.toFixed(1)+' 分（門檻 '+(lv.pass+DB.config.passScoreOffset)+'）</b></div>'+
    '<div class="score-line"><span>今日回扣收入</span><b>'+money(RS.tips)+'</b></div></div>';
-  html+= pass ? '<p class="okmsg">關卡通過。'+(S.level>lv.no?'解鎖第 '+S.level+' 關：'+REST[LEVELS[S.level-1].rest].name+' 第 '+LEVELS[S.level-1].sub+' 關。':'你完成了目前開放的全部關卡。')+'</p>'
-              : '<p class="err">未達標，明天可以再挑戰同一關。</p>';
-  if(pass && lv.sub===5) html+='<p class="okmsg">'+REST[lv.rest].name+' 全部通關，下一間餐廳已解鎖。</p>';
+  html+= pass ? '<p class="okmsg">關卡通過。'+(lv.sub<5?('下次來'+REST[lv.rest].name+'就是第 '+(lv.sub+1)+' 關。')
+                                               :(REST[lv.rest].name+' 五關全數完成。'))+'</p>'
+              : '<p class="err">未達標，下次可以再挑戰同一關。</p>';
+  html+='<p class="small muted">目前進度：'+progressText()+'</p>';
   if(robbed) html+='<p class="err">回家路上遇到雨衣搶匪，身上的現金全被搶走了。</p>';
-  if(S.level===20&&pass&&lv.no===20) S.badges=[...new Set([...S.badges,'🏆 高級侍酒師'])];
+  if(pass&&OPEN_ORDER.every(id=>restCleared(id))) S.badges=[...new Set([...S.badges,'🏆 高級侍酒師'])];
   html+='<hr class="rule"><button class="btn primary" onclick="closeModals();fade(function(){show(\'village\');startVillage()})">回村莊</button>';
   modal(html,{dismiss:false}); Sfx.play(pass?'levelup':'wrong');
   saveGame(); updHUD();
@@ -2483,7 +2692,7 @@ function restTick(){
   if(RS.spawned<lv.tables+4 && !slow && Math.random()<rate){
     const occ=rnd(OCCASIONS.filter(o=>lv.sizes.includes(o.size)));
     if(occ && cur+occ.size<=lv.maxGuests){
-      const free=RS.tables.filter(t=>t.state==='empty'&&(occ.size<=4?RTABLES[t.i].k==='sq':RTABLES[t.i].k==='long'));
+      const free=RS.tables.filter(t=>t.state==='empty'&&(occ.size<=4?RTABLES[t.i].k==='sq':isBig(RTABLES[t.i])));
       if(free.length){ const t=rnd(free); seatGuests(t,occ); walkInParty(t,t.i); RS.spawned++; }
     }
   }
@@ -2505,7 +2714,7 @@ function seatGuests(t,occ){
   const dishes=shuffle(r.menu).slice(0,nDish);
   const budget=Math.round(per.hidden.budget*(occ.size<=2?1:occ.size<=4?1.6:2.6));
   t.g={occ,per,dishes,budget,size:occ.size,hidden:Object.assign({},per.hidden,{budget}),
-       tokens:3,known:{},selfServe:Math.random()<0.10};
+       tokens:3,known:{},selfServe:Math.random()<(r.id==='hotfry'?0.22:0.08)};
   t.state='seated'; t.t=T_ORDER; t.bottles=[]; t.glass=0; t.drunk=0; t.dry=0; t.needRefill=false; t.res=null;
 }
 function advance(t){
@@ -2739,6 +2948,13 @@ function serveTable(t){
       '正式倒酒':()=>{ Sfx.play('pour'); const bt=$('#btl',body()), lq=$('#liq',body());
         if(bt) bt.classList.add('tilt');
         setTimeout(()=>{ if(lq) lq.style.height='58%'; if(bt) bt.classList.remove('tilt'); },700); },
+      '確認酒溫':()=>askTemp(d),
+      '溫酒與分酒':()=>{ Sfx.play('pour'); const lq=$('#liq',body());
+        if(lq) lq.style.height='40%';
+        const m=$('#svMsg',body());
+        if(m) m.textContent = d.id==='shaoxing'
+          ? '以溫酒壺隔水加熱到 40–45°C，再分裝到小杯，香氣柔和不刺口。'
+          : '將酒調整到適飲溫度後，依序分裝到每位客人的小杯。'; },
       '依服務順序':()=>askOrder(),
     };
     function act(b){
@@ -2753,6 +2969,18 @@ function serveTable(t){
         $('#svMsg',body()).textContent='順序不對，下一步應該是「'+steps[idx]+'」。';
         setTimeout(()=>b.classList.remove('wrong'),700); }
     }
+    function askTemp(dd){
+      const right = dd.cat==='清酒' ? (dd.id==='daiginjo'?'冷藏 8–10°C，保留吟釀香氣':'10–12°C 冷飲，或溫燗約 40°C')
+        : dd.cat==='啤酒' ? '4–6°C 冰鎮' : dd.cat==='葡萄酒' ? '白酒 8–12°C、紅酒 14–18°C' : dd.temp;
+      const opts=shuffle([{a:right,s:10},{a:'一律加冰塊，客人比較清爽',s:0},{a:'全部溫到 60°C 以上再上桌',s:0}]);
+      let done=false;
+      const m=modal('<h4>確認供酒溫度</h4><p class="small muted">'+dd.name+'　建議飲用溫度是？</p>'+
+        opts.map((o,k)=>'<button class="opt" data-k="'+k+'">'+o.a+'</button>').join(''),{dismiss:false});
+      $$('.opt',m).forEach(b=>b.onclick=()=>{ if(done) return; done=true;
+        const o=opts[+b.dataset.k]; b.classList.add(o.s===10?'correct':'wrong'); Sfx.play(o.s===10?'correct':'wrong');
+        if(o.s<10){ wrong+=1.5; res.notes.push('酒溫判斷錯誤：'+dd.name+' 建議 '+right+'。'); }
+        setTimeout(()=>m.remove(),900); });
+    }
     function askOrder(){
       const opts=shuffle(POUR_ORDER); let done=false;
       const m=modal('<h4>倒酒的服務順序</h4>'+opts.map((o,k)=>'<button class="opt" data-k="'+k+'">'+o.a+'</button>').join(''),{dismiss:false});
@@ -2766,7 +2994,9 @@ function serveTable(t){
 
   /* 5 事件卡 */
   function step5(){
-    const ev=rnd(EVENTS), opts=shuffle(ev.o); let done=false;
+    const own=EVENTS.filter(e=>e.r===RS.rest.id), common=EVENTS.filter(e=>!e.r);
+    const pool2=(own.length&&Math.random()<0.6)?own:common.concat(own);
+    const ev=rnd(pool2), opts=shuffle(ev.o); let done=false;
     body().innerHTML=head(4,'神秘事件')+'<p class="guest-say">'+ev.t+'</p>'+
       opts.map((o,k)=>'<button class="opt" data-k="'+k+'">'+o.a+'</button>').join('')+'<p class="small muted" id="evWhy"></p>';
     speak(ev.t);
