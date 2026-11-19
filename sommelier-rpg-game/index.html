@@ -696,7 +696,7 @@ const QUESTIONS=[
  {q:'如果方便的話，我可以依照您希望的價格區間推薦兩到三款選擇。',key:'budget',good:true},
  {q:'今天這一桌有沒有不喝酒，或需要特別避開的成員？',key:'special',good:true},
  {q:'您想喝什麼？',key:null,good:false,why:'問得太籠統，顧客無從回答，拿不到情報 Token。'},
- {q:'您應該喜歡 Cabernet Sauvignon 吧？',key:null,good:false,why:'先入為主替顧客決定，屬於猜測而非訪談。',penalty:true},
+ {q:'您應該喜歡{wine}吧？',swap:true,key:null,good:false,why:'先入為主替顧客決定，屬於猜測而非訪談。',penalty:true},
  {q:'請問您預算多少錢？',key:'budget',good:false,why:'直接問金額不符價格詢問禮儀，可改成「價格區間」的說法。',penalty:true},
  {q:'要不要先來一瓶我們店裡最貴的？',key:null,good:false,why:'推銷導向而非需求導向。',penalty:true},
 ];
@@ -868,7 +868,7 @@ const ITEMS=[
  {id:'card',n:'銀行提款卡',price:0,use:'可重複使用',fixed:true,desc:'在醫院或銀行 ATM 提領現金。不可丟棄。'},
  {id:'chopstick',n:'一次性洗筷',price:2,use:'當日用餐時間',desc:'小細節，客人會注意到。'},
  {id:'sticker',n:'卡通貼紙',price:20,use:'當日用餐時間',charm:1,desc:'有小朋友的家庭桌加分。'},
- {id:'opener',n:'啤酒開瓶器',price:50,use:'可重複使用',need:'beer',desc:'開瓶裝啤酒必備。'},
+ {id:'opener',n:'啤酒開瓶器',price:50,use:'可重複使用',need:'beer',desc:'每張桌子本來就備有一支，自備純粹是順手。'},
  {id:'corkscrew',n:'紅酒開瓶器',price:100,use:'可重複使用',need:'wine',desc:'開葡萄酒必備，沒有它開瓶會失分。'},
  {id:'mallet',n:'開酒用木槌',price:200,use:'可重複使用',desc:'處理封蠟與頑固瓶塞。'},
  {id:'cloth',n:'抹布',price:15,use:'使用 10 次後磨損',uses:10,desc:'倒酒收口擦拭，用完要換新。'},
@@ -1272,7 +1272,12 @@ function closeModals(){ $('#modalRoot').innerHTML=''; }
 function speak(text){
   if(!window.speechSynthesis||!S||S.mute) return;
   try{ speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(text.replace(/[「」]/g,''));
+    let say=text.replace(/[「」]/g,'');
+    // $1,500 / NT$1,500 → 1500 元，否則 TTS 會唸成「美元」
+    say=say.replace(/NT\s*\$\s*([\d,]+)/g,(m,n)=>n.replace(/,/g,'')+' 元')
+           .replace(/\$\s*([\d,]+)/g,(m,n)=>n.replace(/,/g,'')+' 元')
+           .replace(/([\d,]+)\s*元/g,(m,n)=>n.replace(/,/g,'')+' 元');
+    const u=new SpeechSynthesisUtterance(say);
     u.lang='zh-TW'; u.rate=1.1; u.pitch=1.1;
     const v=speechSynthesis.getVoices().find(v=>/zh-TW|Chinese \(Taiwan\)|Hanhan|HsiaoChen/i.test(v.name+v.lang));
     if(v) u.voice=v; speechSynthesis.speak(u);
@@ -2398,7 +2403,7 @@ function startRestWorld(){
     const idx=RTABLES.findIndex(t=>isBig(t)?(Math.abs(p.x-t.x)<150&&Math.abs(p.y-t.y)<120):Math.hypot(p.x-t.x,p.y-t.y)<118);
     if(idx>=0) return tableInfo(RS.tables[idx]);
     modal('<h3>場內狀況</h3><p class="small">'+RS.rest.name+'　完成 '+RS.served+' / '+RS.lv.tables+' 桌　回扣 '+money(RS.tips)+'</p>'+
-      '<p class="small muted">左側是廚房出菜口（店內器具放這裡），右側是收銀結帳台。</p><button class="btn" onclick="closeModals()">關上</button>');
+      '<p class="small muted">左側是廚房出菜口（侍者刀放這裡），右側是收銀結帳台。啤酒開瓶器每桌都有。</p><button class="btn" onclick="closeModals()">關上</button>');
   },{w:RW,h:RH});
   World.update=()=>{
     const P=World.player, sp=walkSpeed(3.0), talking=busy();
@@ -2423,7 +2428,7 @@ function startRestWorld(){
     const tb=near>=0&&RS?RS.tables[near]:null;
     World.prompt = !tb||!tb.g ? null
       : tb.state==='ordered' ? '點第 '+(near+1)+' 桌開始服務'
-      : tb.state==='drinking' ? (tb.needRefill?'第 '+(near+1)+' 桌需要補酒':'第 '+(near+1)+' 桌用餐中')
+      : tb.state==='drinking' ? (tb.needRefill?('第 '+(near+1)+' 桌需要'+(tb.bottleOnly?'續瓶':'補酒')):'第 '+(near+1)+' 桌用餐中')
       : tb.state==='closing' ? '第 '+(near+1)+' 桌要結帳，過去收尾' : null;
     updateOrderPop();
   };
@@ -2456,7 +2461,7 @@ function drawRestaurant(){
   ctx.fillText(RS?RS.rest.name:'',500,38);
   ctx.fillStyle=R.wall; ctx.fillRect(0,60,40,680); ctx.fillRect(960,60,40,680);
   ctx.fillStyle='#e0cfa8'; ctx.font='13px system-ui';
-  ctx.save(); ctx.translate(20,380); ctx.rotate(-Math.PI/2); ctx.fillText('廚房出菜口（店內器具）',0,4); ctx.restore();
+  ctx.save(); ctx.translate(20,380); ctx.rotate(-Math.PI/2); ctx.fillText('廚房出菜口（侍者刀）',0,4); ctx.restore();
   ctx.save(); ctx.translate(980,380); ctx.rotate(Math.PI/2); ctx.fillText('收銀結帳台',0,4); ctx.restore();
   ctx.fillStyle='#6b4a35'; ctx.fillRect(440,718,120,22);
   ctx.fillStyle='#e6d6b8'; ctx.fillText('入口',500,735);
@@ -2495,9 +2500,15 @@ function drawTableStatus(ctx,t,tb,i){
     ctx.fillText(tb.state==='seated'?'點餐中':'出菜倒數　點桌服務',t.x,top+22);
   }
   if(tb.state==='drinking'||tb.state==='closing'){
+    if(tb.bottleOnly){
+      const b0=tb.bottles.find(b=>b.level>0);
+      bar(ctx,t.x-48,top,96,7,b0?b0.level:0,(!b0||b0.level<0.3)?'#e0684a':'#b8375c',
+        b0?'瓶內酒量':'空瓶，要續瓶');
+    } else {
     const gl=tb.glasses&&tb.glasses.length?tb.glasses:[{level:tb.glass||0}];
     const w0=Math.max(20,Math.floor(96/gl.length)-3);
     gl.forEach((x,k)=>bar(ctx,t.x-48+k*(w0+3),top,w0,7,x.level,x.level<0.2?'#e0684a':'#b8375c',k===0?('酒杯 ×'+gl.length):''));
+    }
     bar(ctx,t.x-48,top+18,96,7,tb.drunk/100,tb.drunk>=90?'#e0684a':tb.drunk>=60?'#d9a441':'#7fb98f','酒意 '+Math.round(tb.drunk)+'%');
     // 酒瓶
     (tb.bottles||[]).forEach((b,k)=>{
@@ -2509,7 +2520,7 @@ function drawTableStatus(ctx,t,tb,i){
     if(tb.state==='closing'){ ctx.textAlign='center'; ctx.font='bold 11px system-ui'; ctx.fillStyle='#ffd08a';
       ctx.fillText('客人要求結帳',t.x,top+70); }
     else if(tb.needRefill){ ctx.textAlign='center'; ctx.font='bold 11px system-ui'; ctx.fillStyle='#ff9c7a';
-      ctx.fillText('需要補酒',t.x,top+70); }
+      ctx.fillText(tb.bottleOnly?'需要續瓶':'需要補酒',t.x,top+70); }
     if(tb.drunk>=90){ ctx.textAlign='center'; ctx.font='bold 12px system-ui'; ctx.fillStyle='#ff6f5e';
       ctx.fillText('客人開始脫序！',t.x,top-12); }
   }
@@ -2564,14 +2575,40 @@ const GLASSES_PER_BOTTLE=5;
 const FLOW={
   french:{q:4,narr:['C','W','F','S','P'],steps:['展示酒標','確認酒款','開瓶','試酒','正式倒酒','依服務順序'],
           w:{interview:20,choice:20,logic:20,story:20,service:10,crisis:10}},
-  hotfry:{q:2,narr:['W','F','P'],steps:['介紹酒品','開瓶'],
+  hotfry:{q:2,narr:['W','F','P'],steps:['展示酒標','確認酒款','開瓶'],bottleOnly:true,
           w:{interview:15,choice:25,logic:20,story:15,service:15,crisis:10}},
-  canton:{q:3,narr:['C','W','F','P'],steps:['展示酒標','確認酒款','開瓶','溫酒與分酒','依服務順序'],
-          w:{interview:20,choice:20,logic:20,story:20,service:10,crisis:10}},
-  japan:{q:4,narr:['C','W','F','S','P'],steps:['展示酒標','確認酒溫','確認酒款','開瓶','正式倒酒','依服務順序'],
+  canton:{q:3,narr:['C','W','F','P'],steps:['展示酒標','確認酒款','開瓶'],bottleOnly:true,
+          w:{interview:20,choice:25,logic:20,story:15,service:10,crisis:10}},
+  japan:{q:4,narr:['C','W','F','S','P'],steps:['展示酒標','確認酒款','開瓶'],bottleOnly:true,
           w:{interview:20,choice:20,logic:20,story:20,service:10,crisis:10}},
 };
 const flowOf=id=>FLOW[id]||FLOW.french;
+
+/* 文字中出現的酒款關鍵字 → 這間店有沒有賣 */
+const WINE_WORDS=[
+ {w:'Cabernet Sauvignon',ids:['cabernet']},{w:'Pinot Noir',ids:['pinot']},{w:'Merlot',ids:['merlot']},
+ {w:'Chardonnay',ids:['chardonnay']},{w:'Sauvignon Blanc',ids:['sauvignon']},{w:'Riesling',ids:['riesling']},
+ {w:'Brut',ids:['champagne']},{w:'香檳',ids:['champagne']},{w:'氣泡酒',ids:['champagne']},
+ {w:'大吟釀',ids:['daiginjo']},{w:'清酒',ids:['sake','daiginjo']},{w:'燒酎',ids:['shochu']},
+ {w:'紹興',ids:['shaoxing']},{w:'高粱',ids:['gaoliang']},{w:'梅子酒',ids:['plum']},
+ {w:'威士忌',ids:['whisky']},{w:'干邑',ids:['xo']},{w:'伏特加',ids:['vodka']},{w:'龍舌蘭',ids:['tequila']},
+ {w:'琴酒',ids:['gin']},{w:'調酒',ids:['cocktail']},
+ {w:'白酒',ids:['sauvignon','chardonnay','riesling']},
+ {w:'紅酒',ids:['pinot','merlot','cabernet','redHouse']},
+ {w:'啤酒',ids:['beer','beerBottle']},
+];
+/* 這段文字提到的酒，這間店是不是都有賣 */
+function fitsMenu(text,restId){
+  const list=(REST[restId]||REST.french).drinks;
+  return WINE_WORDS.every(x=>!text.includes(x.w)||x.ids.some(id=>list.includes(id)));
+}
+/* 把題目裡的酒名換成本店實際有賣的一支 */
+function localizeQ(q,restId){
+  if(!q.swap) return q;
+  const list=(REST[restId]||REST.french).drinks.map(i=>DRINKS[i]).filter(d=>d.cat!=='無酒精');
+  const pick=rnd(list)||DRINKS.redHouse;
+  return {...q,q:q.q.replace('{wine}',pick.name)};
+}
 
 let RS=null, restTimer=null;
 const T_ORDER=16, T_SERVE=30;
@@ -2629,7 +2666,7 @@ function startShift(id,lv){
   const r=REST[id];
   RS={rest:r,lv,flow:flowOf(id),tables:[],served:0,scores:[],tips:0,spawned:0,
       startMin:S.minutes,ended:false,inService:false,
-      houseTools: id==='hotfry' ? [] : (id==='japan' ? ['corkscrew','warmer'] : ['corkscrew'])};
+      houseTools: id==='hotfry' ? ['opener'] : (id==='japan' ? ['opener','corkscrew','warmer'] : ['opener','corkscrew'])};
   RTABLES.forEach((t,i)=>{ t.k = i<2 ? (ROOM[id]||ROOM.french).big : 'sq'; });   // 大桌型態依店別
   inShift=true; show('restaurant');
   $('#restName').textContent=r.name;
@@ -2750,13 +2787,24 @@ function drinkTick(t){
     t.drunk=Math.min(100,Math.round(avg/full*1000)/10);
   }
   t.glass=glasses.reduce((a,x)=>a+x.level,0)/glasses.length;
-  t.needRefill=glasses.some(x=>x.level<0.25)||!cur;
-  if(!cur){
-    t.dry=(t.dry||0)+1;
-    if(t.dry===6) toast('第 '+(t.i+1)+' 桌的酒見底了，過去補酒。','bad');
-    if(t.dry>22 && t.state==='drinking'){ t.state='closing'; t.closeWait=0;
-      toast('第 '+(t.i+1)+' 桌等不到續酒，要求結帳。','bad'); }
+  if(t.bottleOnly){
+    // 客人自己斟酒：杯子會自動從桌上的瓶子補滿，侍酒師盯的是「瓶子」
+    if(cur) glasses.forEach(x=>{ if(x.level<0.3){ const need=1-x.level;
+      const take=Math.min(need,cur.level*GLASSES_PER_BOTTLE);
+      x.level+=take; cur.level=Math.max(0,cur.level-take/GLASSES_PER_BOTTLE); } });
+    t.glass=glasses.reduce((a,x)=>a+x.level,0)/glasses.length;
+    t.needRefill=(!cur)||cur.level<0.3;
+  } else {
+    t.needRefill=glasses.some(x=>x.level<0.25)||!cur;
   }
+  // 沒酒可喝：瓶子空了，或（法式）杯子空著卻遲遲沒人來斟
+  const thirsty=!cur || (!t.bottleOnly && glasses.every(x=>x.level<0.06));
+  if(thirsty){
+    t.dry=(t.dry||0)+1;
+    if(t.dry===6) toast('第 '+(t.i+1)+' 桌'+(cur?'的杯子空了，過去斟酒。':(t.bottleOnly?'的瓶子見底了，過去續瓶。':'的酒見底了，過去補酒。')),'bad');
+    if(t.dry>22 && t.state==='drinking'){ t.state='closing'; t.closeWait=0;
+      toast('第 '+(t.i+1)+' 桌等不到'+(t.bottleOnly?'續瓶':'續酒')+'，要求結帳。','bad'); }
+  } else t.dry=0;
   if(t.state==='closing'){
     t.closeWait=(t.closeWait||0)+1;
     if(t.closeWait>28) settleTable(t,'客人自己走到收銀台結帳，你沒有完成收尾。',{closing:0});
@@ -2789,12 +2837,12 @@ function tableInfo(t){
     '<button class="btn" onclick="closeModals()">關上</button>');
 }
 function pickHouseTools(){
-  const has=RS.houseTools.includes('opener');
-  if(has) return toast('店內的開瓶器已經在你身上了。');
-  RS.houseTools=[...new Set([...RS.houseTools,'opener','corkscrew'])]; Sfx.play('coin');
-  toast('從廚房出菜口拿了店內的啤酒開瓶器與侍者刀。','good');
+  if(RS.houseTools.includes('corkscrew')) return toast('店內的侍者刀已經在你身上了。（啤酒開瓶器每桌都有）');
+  RS.houseTools=[...new Set([...RS.houseTools,'corkscrew'])]; Sfx.play('coin');
+  toast('從廚房出菜口拿了店內的侍者刀，開葡萄酒用。','good');
 }
-const canOpen=tool=>!tool||hasItem(tool)||RS.houseTools.includes(tool);
+const TABLE_TOOLS=['opener'];   // 每張桌子本來就放著啤酒開瓶器
+const canOpen=tool=>!tool||TABLE_TOOLS.includes(tool)||hasItem(tool)||RS.houseTools.includes(tool);
 
 /* ══════════ 服務鏈（前段） ══════════ */
 function serveTable(t){
@@ -2812,8 +2860,10 @@ function serveTable(t){
 
   /* 1 需求訪談 */
   function step1(){
-    const pool=shuffle(QUESTIONS).slice(0,F.q<=2?6:8);
-    if(!pool.some(q=>q.good)) pool[0]=QUESTIONS[0];
+    const rid=r.id;
+    const usable=QUESTIONS.filter(q=>q.swap||fitsMenu(q.q,rid)).map(q=>localizeQ(q,rid));
+    const pool=shuffle(usable).slice(0,F.q<=2?6:8);
+    if(!pool.some(q=>q.good)) pool[0]=localizeQ(QUESTIONS[0],rid);
     body().innerHTML=head(0,'迎賓與需求訪談')+
       '<p class="guest-say">'+g.per.n+'：「'+g.per.line+'」</p>'+
       '<p class="small muted">顧客有 3 顆情報 Token。'+(F.q<=2?'這裡節奏快，最多問 2 個問題。':'最多問 '+F.q+' 個問題。')+'問法正確才拿得到情報。</p>'+
@@ -2926,7 +2976,7 @@ function serveTable(t){
     const render=()=>{
       body().innerHTML=head(3,'專業侍酒流程（前段）')+
         '<p class="small muted">依正確順序點擊，順序錯會扣分。'+
-        (tool&&!canOpen(tool)?'<span class="err">身上沒有'+ITEM[tool].n+'，先到廚房出菜口拿店內器具。</span>':'')+'</p>'+stage+
+        (tool&&!canOpen(tool)?'<span class="err">身上沒有'+ITEM[tool].n+'，先到左側廚房出菜口拿店內的侍者刀。</span>':'')+'</p>'+stage+
         '<div id="acts" style="margin-top:12px">'+shuffle(steps).map(s=>'<button class="opt" data-s="'+s+'" style="display:inline-block;width:auto;margin:4px">'+s+'</button>').join('')+'</div>'+
         '<p class="small" id="svMsg"></p>'+
         (tutorial?'<p class="small muted">學姊：'+steps.join(' → ')+'。</p>':'');
@@ -2940,9 +2990,12 @@ function serveTable(t){
       '介紹酒品':()=>{ $('#btl',body()).classList.add('spin'); Sfx.play('flip');
         $('#svMsg',body()).textContent='「這支是'+d.name+'，'+d.flavor+'。」'; speak('這支是'+d.name); },
       '確認酒款':()=>{ $('#btl',body()).classList.remove('spin'); $('#btl',body()).classList.add('fly'); Sfx.play('coin'); },
-      '開瓶':()=>{ if(tool&&!canOpen(tool)){ wrong+=1; $('#svMsg',body()).textContent='沒有'+ITEM[tool].n+'，開瓶失敗。先去廚房出菜口拿店內器具。'; Sfx.play('wrong'); return; }
+      '開瓶':()=>{ if(tool&&!canOpen(tool)){ wrong+=1; $('#svMsg',body()).textContent='沒有'+ITEM[tool].n+'，開瓶失敗。先到左側廚房出菜口拿店內的侍者刀。'; Sfx.play('wrong'); return; }
         Sfx.play('pop'); const b=$('#btl',body()); b.classList.remove('fly'); b.style.transform='translateY(-14px)';
-        $('#svMsg',body()).textContent='開瓶乾淨俐落，軟木塞完整取出。'; },
+        $('#svMsg',body()).textContent = d.cat==='啤酒'
+          ? '以桌上的開瓶器撬開瓶蓋，手勢俐落、沒有濺出泡沫。'
+          : (isWine(d)?'割開錫箔、螺旋鑽正，軟木塞完整取出，沒有碎屑。'
+                      :'開瓶俐落，瓶口擦拭乾淨後再上桌。'); },
       '試酒':()=>{ Sfx.play('pour'); const gl=$('#gls',body()), lq=$('#liq',body());
         if(lq) lq.style.height='22%'; if(gl){ gl.classList.add('taste'); setTimeout(()=>gl.classList.remove('taste'),1500); } },
       '正式倒酒':()=>{ Sfx.play('pour'); const bt=$('#btl',body()), lq=$('#liq',body());
@@ -2994,8 +3047,12 @@ function serveTable(t){
 
   /* 5 事件卡 */
   function step5(){
-    const own=EVENTS.filter(e=>e.r===RS.rest.id), common=EVENTS.filter(e=>!e.r);
-    const pool2=(own.length&&Math.random()<0.6)?own:common.concat(own);
+    const rid=RS.rest.id;
+    const fits=e=>fitsMenu(e.t+e.o.map(x=>x.a).join('')+(e.why||''),rid);
+    const own=EVENTS.filter(e=>e.r===rid&&fits(e));
+    const common=EVENTS.filter(e=>!e.r&&fits(e));
+    let pool2=(own.length&&Math.random()<0.6)?own:common.concat(own);
+    if(!pool2.length) pool2=common.length?common:EVENTS.filter(e=>!e.r);
     const ev=rnd(pool2), opts=shuffle(ev.o); let done=false;
     body().innerHTML=head(4,'神秘事件')+'<p class="guest-say">'+ev.t+'</p>'+
       opts.map((o,k)=>'<button class="opt" data-k="'+k+'">'+o.a+'</button>').join('')+'<p class="small muted" id="evWhy"></p>';
@@ -3024,7 +3081,7 @@ function serveTable(t){
     const drinkers=(t.party||[]).filter(p=>p.drinks);
     t.glasses=drinkers.map(p=>({p,level:1,rate:p.rate||1,drank:1}));
     if(!t.glasses.length) t.glasses=[{p:null,level:1,rate:1,drank:1}];
-    t.glassesToFull=glassesToFull(d);
+    t.glassesToFull=glassesToFull(d); t.bottleOnly=!!RS.flow.bottleOnly;
     t.glass=1; t.drunk=0; t.dry=0; t.warned=false; t.brawled=false;
     t.state='drinking';
     body().innerHTML=head(5,'酒已送上桌')+
@@ -3032,7 +3089,9 @@ function serveTable(t){
       '<div class="panel" style="margin:10px 0">'+
       '<div class="score-line"><span>目前累計</span><b>'+(res.interview+res.choice+res.logic+res.story+res.service+res.crisis)+' 分</b></div>'+
       '<div class="score-line"><span>本桌回扣</span><b>'+money(tip)+'</b></div></div>'+extra+
-      '<p class="small muted">接下來可以去顧其他桌。客人的酒杯變少時回來補酒，酒瓶見底要再開一瓶；'+
+      '<p class="small muted">接下來可以去顧其他桌。'+(RS.flow.bottleOnly
+        ?'這裡的客人自己斟酒，桌上的瓶子快見底時回來續瓶；'
+        :'客人的酒杯變少時回來補酒，酒瓶見底要再開一瓶；')+
       '等到他們準備結帳，記得回來完成收尾，這桌才會結算。</p>'+
       (res.notes.length?'<p class="small muted">回饋：'+res.notes.join(' ')+'</p>':'')+
       '<hr class="rule"><button class="btn primary" id="sv_fin">回到場內</button>';
@@ -3046,19 +3105,26 @@ function refillMenu(t){
   const res=t.res, d=res?res.main:null, g=t.g;
   const cur=t.bottles.find(b=>b.level>0);
   const tool=d?needTool(d):null;
+  const bottleOnly=!!t.bottleOnly;
   RS.inService=true;
-  const m=modal('<h3>第 '+(t.i+1)+' 桌　補酒</h3>'+
-    '<p class="small">飲酒 '+((t.glasses||[]).length)+' 位（共 '+t.g.size+' 位）　平均酒杯 '+Math.round(t.glass*100)+'%　'+
-    (cur?'目前這支還剩 '+Math.round(cur.level*100)+'%':'桌上的酒都空了')+'　酒意 '+Math.round(t.drunk)+'%</p>'+
-    (t.drunk>=90?'<p class="err small">客人已經明顯喝多了，這時候再倒酒會出事。</p>':'')+
-    '<button class="opt" id="rfPour"'+(cur?'':' disabled')+'>幫客人把酒杯斟滿（第一視角倒酒）</button>'+
-    '<button class="opt" id="rfNew">再開一瓶 '+(d?d.name:'')+'（'+money(d?d.price:0)+'，回扣 15%）</button>'+
+  const head='<h3>第 '+(t.i+1)+' 桌　'+(bottleOnly?'續瓶':'補酒')+'</h3>'+
+    '<p class="small">飲酒 '+((t.glasses||[]).length)+' 位（共 '+t.g.size+' 位）　'+
+    (bottleOnly ? ('桌上還有 '+t.bottles.filter(b=>b.level>0).length+' 支　'+
+        (cur?'目前這支剩 '+Math.round(cur.level*100)+'%':'已經空瓶'))
+                : ('平均酒杯 '+Math.round(t.glass*100)+'%　'+(cur?'目前這支還剩 '+Math.round(cur.level*100)+'%':'桌上的酒都空了')))+
+    '　酒意 '+Math.round(t.drunk)+'%</p>'+
+    (t.drunk>=90?'<p class="err small">客人已經明顯喝多了，這時候再加酒會出事。</p>':'')+
+    (bottleOnly?'<p class="small muted">這裡的客人自己斟酒，你要盯的是桌上的瓶子見底沒有。</p>':'');
+  const m=modal(head+
+    (bottleOnly?'':'<button class="opt" id="rfPour"'+(cur?'':' disabled')+'>幫客人把酒杯斟滿（第一視角倒酒）</button>')+
+    '<button class="opt" id="rfNew">'+(bottleOnly?'再送一瓶 ':'再開一瓶 ')+(d?d.name:'')+'（'+money(d?d.price:0)+'，回扣 15%）</button>'+
     '<button class="opt" id="rfTea">送上熱茶與清水，先緩一下</button>'+
     '<button class="opt" id="rfClose">請客人確認是否結帳收尾</button>'+
     '<hr class="rule"><button class="btn" id="rfBack">先不處理</button>',{dismiss:false});
   const done=()=>{ closeModals(); RS.inService=false; };
   $('#rfBack').onclick=done;
-  $('#rfPour').onclick=()=>{
+  const pour=$('#rfPour');
+  if(pour) pour.onclick=()=>{
     if(!cur) return toast('酒瓶已經空了，要再開一瓶。','bad');
     Sfx.play('pour');
     const timely=t.glass<0.45;
@@ -3072,16 +3138,21 @@ function refillMenu(t){
     done();
   };
   $('#rfNew').onclick=()=>{
-    if(tool&&!canOpen(tool)) return toast('沒有'+ITEM[tool].n+'，先到廚房出菜口拿店內器具。','bad');
-    if(cur&&cur.level>0.3) return toast('目前這支還有酒，先斟完再開新的。','bad');
-    if(t.drunk>=90) { res.notes.push('客人脫序時仍加開酒。'); }
+    if(tool&&!canOpen(tool)) return toast('沒有'+ITEM[tool].n+'，先到左側廚房出菜口拿店內的侍者刀。','bad');
+    if(!bottleOnly&&cur&&cur.level>0.3) return toast('目前這支還有酒，先斟完再開新的。','bad');
+    if(bottleOnly&&cur&&cur.level>0.5) return toast('桌上這支還有一半，先讓客人喝完再送。','bad');
+    if(t.drunk>=90) res.notes.push('客人脫序時仍加開酒。');
     Sfx.play('pop');
+    const timely=!cur||cur.level<0.3;
     t.bottles.push({level:1,name:d.name,abv:d.abv});
-    (t.glasses||[]).forEach(x=>x.level=1); t.glass=1; t.dry=0;
+    if(bottleOnly){ (t.glasses||[]).forEach(x=>{ if(x.level<0.3) x.level=1; }); }
+    else (t.glasses||[]).forEach(x=>x.level=1);
+    t.glass=(t.glasses||[]).reduce((a,x)=>a+x.level,0)/Math.max(1,(t.glasses||[]).length);
+    t.dry=0; t.needRefill=false;
     const tip=Math.round(d.price*0.15*(1+charm()/100));
     S.cash+=tip; RS.tips+=tip; Sfx.play('coin');
-    res.refill=Math.min(RS.flow.w.service*0.2,(res.refill||0)+0.6);
-    toast('加開一瓶，回扣 '+money(tip),'good'); updHUD(); done();
+    res.refill=Math.min(RS.flow.w.service*0.2,(res.refill||0)+(timely?0.8:0.4));
+    toast((bottleOnly?'送上新的一瓶，回扣 ':'加開一瓶，回扣 ')+money(tip),'good'); updHUD(); done();
   };
   $('#rfTea').onclick=()=>{
     t.drunk=Math.max(0,t.drunk-28); t.warned=false;
@@ -3126,7 +3197,7 @@ function settleTable(t,reason,add){
     '<div class="panel" style="margin:10px 0">'+
     [['需求訪談',res.interview,RS.flow.w.interview],['酒款選擇',res.choice,RS.flow.w.choice],
      ['餐酒搭配邏輯',res.logic,RS.flow.w.logic],['推薦敘事',res.story,RS.flow.w.story],
-     ['侍酒流程（前段＋補酒＋收尾）',Math.round(res.service+(res.refill||0)+res.closing),RS.flow.w.service],
+     [(RS.flow.bottleOnly?'侍酒流程（前段＋續瓶＋收尾）':'侍酒流程（前段＋補酒＋收尾）'),Math.round(res.service+(res.refill||0)+res.closing),RS.flow.w.service],
      ['臨場應變',res.crisis,RS.flow.w.crisis]]
      .map(x=>'<div class="score-line"><span>'+x[0]+'</span><b>'+Math.round(x[1])+' / '+x[2]+'</b></div>').join('')+
     '<div class="score-line" style="border-bottom:0"><span><b>總分</b></span><b style="color:var(--gold);font-size:19px">'+total+' / 100</b></div></div>'+
