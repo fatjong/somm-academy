@@ -794,9 +794,9 @@ const EVENTS_BY_REST=[
   why:'辣味加高酒精會放大灼熱感，也容易讓客人過量。'},
  {r:'hotfry',t:'客人自己走到冰箱拿了兩瓶啤酒。',
   o:[{a:'過去幫忙開瓶並補上乾淨杯子，順口說明店內可以代勞。',s:10},
-     {a:'當作沒看到，反正沒有回扣。',s:1},
+     {a:'當作沒看到，反正沒有獎金。',s:1},
      {a:'出聲制止客人。',s:0}],
-  why:'即使那一瓶沒有回扣，服務品質仍然是評分的一部分。'},
+  why:'即使那一瓶沒有獎金，服務品質仍然是評分的一部分。'},
  {r:'canton',t:'主人家臨時加了一道佛跳牆，說「酒再開一支吧」。',
   o:[{a:'先確認桌上還剩多少酒，說明佛跳牆濃郁、建議紹興或結構足的紅酒，再問要不要加開。',s:10},
      {a:'立刻開最貴的一支。',s:2},
@@ -840,6 +840,31 @@ const EVENTS_BY_REST=[
 ];
 EVENTS_BY_REST.forEach(e=>EVENTS.push(e));
 
+/* ── 無酒精飲品桌的事件卡 ── */
+const EVENTS_SOFT=[
+ {soft:true,t:'客人喝了兩口說：「這個不夠冰。」',
+  o:[{a:'立刻換上冰鎮過的新杯與飲品，並說明之後會留意桌上的溫度。',s:10},
+     {a:'「現在就是這個溫度。」',s:0},
+     {a:'直接丟兩顆冰塊進杯子。',s:3}],
+  why:'溫度是無酒精飲品最重要的品質，換新的比補救更俐落。'},
+ {soft:true,t:'同桌有人問：「我們都不喝酒，這樣會不會被瞧不起？」',
+  o:[{a:'說明不喝酒完全沒問題，並介紹幾款適合搭這桌菜的無酒精選擇。',s:10},
+     {a:'「其實喝一點比較好搭。」',s:0},
+     {a:'笑一笑不回答。',s:2}],
+  why:'不勸酒是基本的待客素養，無酒精搭餐同樣能講得專業。'},
+ {soft:true,t:'客人的杯子空了，但你正在服務別桌。',
+  o:[{a:'先向這桌示意「馬上過來」，處理完手邊的事立刻回來續杯。',s:10},
+     {a:'裝作沒看到，等有空再說。',s:0},
+     {a:'丟下手邊的桌子衝過去。',s:3}],
+  why:'來不及馬上處理時，先給回應再安排順序，客人就不會覺得被忽略。'},
+ {soft:true,t:'客人問：「有沒有喝起來像酒，但其實沒有酒精的？」',
+  o:[{a:'介紹無酒精氣泡飲或冷泡茶的口感層次，說明搭這桌菜的理由。',s:10},
+     {a:'「沒有，那你就點酒啊。」',s:0},
+     {a:'「都差不多啦。」',s:2}],
+  why:'無酒精選擇一樣要講得出風味與搭配邏輯。'},
+];
+EVENTS_SOFT.forEach(e=>EVENTS.push(e));
+
 /* ── 侍酒流程正確順序 ─────────────────────────────────────── */
 const SERVICE_STEPS=['展示酒標','確認酒款','開瓶','試酒','正式倒酒','依服務順序','補酒','收尾'];
 const POUR_ORDER=[
@@ -868,9 +893,10 @@ const ITEMS=[
  {id:'card',n:'銀行提款卡',price:0,use:'可重複使用',fixed:true,desc:'在醫院或銀行 ATM 提領現金。不可丟棄。'},
  {id:'chopstick',n:'一次性洗筷',price:2,use:'當日用餐時間',desc:'小細節，客人會注意到。'},
  {id:'sticker',n:'卡通貼紙',price:20,use:'當日用餐時間',charm:1,desc:'有小朋友的家庭桌加分。'},
- {id:'opener',n:'啤酒開瓶器',price:50,use:'可重複使用',need:'beer',desc:'每張桌子本來就備有一支，自備純粹是順手。'},
- {id:'corkscrew',n:'紅酒開瓶器',price:100,use:'可重複使用',need:'wine',desc:'開葡萄酒必備，沒有它開瓶會失分。'},
- {id:'mallet',n:'開酒用木槌',price:200,use:'可重複使用',desc:'處理封蠟與頑固瓶塞。'},
+ {id:'opener',n:'啤酒開瓶器',price:50,use:'可重複使用',need:'beer',desc:'桌上那支萬用開瓶器也能開，自備純粹是順手。'},
+ {id:'corkscrew',n:'專業侍酒刀',price:100,use:'可重複使用',need:'wine',elegant:3,
+  desc:'桌上雖然有萬用開瓶器，但那支又鈍又醜。配戴這把侍酒刀在客人面前開瓶，觀感完全不同，侍酒流程加分。'},
+ {id:'mallet',n:'開酒用木槌',price:200,use:'可重複使用',elegant:1,desc:'處理封蠟與頑固瓶塞，必要時派得上用場。'},
  {id:'cloth',n:'抹布',price:15,use:'使用 10 次後磨損',uses:10,desc:'倒酒收口擦拭，用完要換新。'},
  {id:'tie',n:'領帶',price:150,use:'可重複使用',charm:2,desc:'正式度提升。'},
  {id:'bowtie',n:'蝴蝶結',price:150,use:'可重複使用',charm:2,desc:'法式餐廳的標準配件。'},
@@ -1658,7 +1684,7 @@ function pHome(){
 function itemIcon(id,size){ const u=(window.__ICON__||{})[id];
   return u?'<img src="'+u+'" alt="" style="width:'+size+'px;height:'+size+'px;image-rendering:pixelated;vertical-align:middle">'
           :'<span style="font-size:'+size*0.6+'px">📦</span>'; }
-const WEARABLE=['tie','bowtie','badge','apron','balloon','vest','shirt','pants'];
+const WEARABLE=['tie','bowtie','badge','apron','balloon','vest','shirt','pants','corkscrew','mallet','opener'];
 function showInventory(sel){
   S.equip=S.equip||[];
   const cells=[]; for(let i=0;i<90;i++){ const it=S.inv[i];
@@ -1701,7 +1727,7 @@ function showInventory(sel){
 
 function pShop(){
   $('#placeBody').innerHTML=placeHead('販賣部','買裝備提升魅力，賺錢更快')+
-   '<div class="panel"><div class="list-row"><span class="muted small">現在的魅力加成：'+charm()+'%（影響回扣與客人第一印象）</span>'+
+   '<div class="panel"><div class="list-row"><span class="muted small">現在的魅力加成：'+charm()+'%（影響獎金與客人第一印象）</span>'+
    '<button class="btn sm" id="btnInv2">打開道具窗</button></div>'+
    ITEMS.filter(i=>!i.fixed).map(i=>'<div class="list-row"><div style="display:flex;gap:10px;align-items:flex-start">'+itemIcon(i.id,38)+'<div><b>'+i.n+'</b> <span class="muted small">'+i.use+
      (i.charm?'　魅力 +'+i.charm:'')+'</span><br><span class="small muted">'+i.desc+'</span></div></div>'+
@@ -2402,7 +2428,7 @@ function startRestWorld(){
     if(Math.hypot(World.player.x-p.x,World.player.y-p.y)<44) return showInventory();
     const idx=RTABLES.findIndex(t=>isBig(t)?(Math.abs(p.x-t.x)<150&&Math.abs(p.y-t.y)<120):Math.hypot(p.x-t.x,p.y-t.y)<118);
     if(idx>=0) return tableInfo(RS.tables[idx]);
-    modal('<h3>場內狀況</h3><p class="small">'+RS.rest.name+'　完成 '+RS.served+' / '+RS.lv.tables+' 桌　回扣 '+money(RS.tips)+'</p>'+
+    modal('<h3>場內狀況</h3><p class="small">'+RS.rest.name+'　完成 '+RS.served+' / '+RS.lv.tables+' 桌　獎金 '+money(RS.tips)+'</p>'+
       '<p class="small muted">左側是廚房出菜口（侍者刀放這裡），右側是收銀結帳台。啤酒開瓶器每桌都有。</p><button class="btn" onclick="closeModals()">關上</button>');
   },{w:RW,h:RH});
   World.update=()=>{
@@ -2602,6 +2628,18 @@ function fitsMenu(text,restId){
   const list=(REST[restId]||REST.french).drinks;
   return WINE_WORDS.every(x=>!text.includes(x.w)||x.ids.some(id=>list.includes(id)));
 }
+/* 事件卡還要對得上這一桌「實際點的那一款」，不然會出現推烏龍茶卻在聊高粱 */
+function fitsServed(ev,restId,served){
+  const text=(typeof ev==='string')?ev:(ev.t+ev.o.map(x=>x.a).join('')+(ev.why||''));
+  const isSoftCard=(typeof ev!=='string')&&!!ev.soft;
+  if(served&&served.cat==='無酒精') return isSoftCard;   // 無酒精桌只抽無酒精事件卡
+  if(isSoftCard) return false;                           // 有酒的桌不抽無酒精事件卡
+  if(!fitsMenu(text,restId)) return false;
+  if(!served) return true;
+  if(/軟木塞|酒塞|TCA|錫箔/.test(text) && !isWine(served)) return false;
+  // 文字點名了某款酒，就必須是這桌點的那一款
+  return WINE_WORDS.every(x=>!text.includes(x.w)||x.ids.includes(served.id));
+}
 /* 把題目裡的酒名換成本店實際有賣的一支 */
 function localizeQ(q,restId){
   if(!q.swap) return q;
@@ -2705,7 +2743,7 @@ function endShift(){
   let html='<h3>下班了</h3><div class="panel" style="margin:10px 0">'+
    '<div class="score-line"><span>完成桌數</span><b>'+RS.served+' / '+lv.tables+'</b></div>'+
    '<div class="score-line"><span>平均得分</span><b>'+avg.toFixed(1)+' 分（門檻 '+(lv.pass+DB.config.passScoreOffset)+'）</b></div>'+
-   '<div class="score-line"><span>今日回扣收入</span><b>'+money(RS.tips)+'</b></div></div>';
+   '<div class="score-line"><span>今日獎金收入</span><b>'+money(RS.tips)+'</b></div></div>';
   html+= pass ? '<p class="okmsg">關卡通過。'+(lv.sub<5?('下次來'+REST[lv.rest].name+'就是第 '+(lv.sub+1)+' 關。')
                                                :(REST[lv.rest].name+' 五關全數完成。'))+'</p>'
               : '<p class="err">未達標，下次可以再挑戰同一關。</p>';
@@ -2738,7 +2776,7 @@ function restTick(){
       if(!slow||RS.frame%2===0){ t.t--; if(t.t<=0) advance(t); }
     } else if(t.state==='drinking'||t.state==='closing'){ drinkTick(t); }
   });
-  $('#restStat').textContent='完成 '+RS.served+' / '+lv.tables+' 桌　回扣 '+money(RS.tips)+
+  $('#restStat').textContent='完成 '+RS.served+' / '+lv.tables+' 桌　獎金 '+money(RS.tips)+
     '　在店 '+cur+' 位（上限 '+lv.maxGuests+'）'+(inPeak(RS.rest.id)?'　用餐尖峰':'');
   const h=hoursOf(RS.rest.id);
   const closeMin=(h.close>24?h.close-24:h.close)*60;
@@ -2841,8 +2879,19 @@ function pickHouseTools(){
   RS.houseTools=[...new Set([...RS.houseTools,'corkscrew'])]; Sfx.play('coin');
   toast('從廚房出菜口拿了店內的侍者刀，開葡萄酒用。','good');
 }
-const TABLE_TOOLS=['opener'];   // 每張桌子本來就放著啤酒開瓶器
+/* 每張桌子都放著一支萬用開瓶器：啤酒、葡萄酒都開得了，就是不好看 */
+const TABLE_TOOLS=['opener','corkscrew'];
 const canOpen=tool=>!tool||TABLE_TOOLS.includes(tool)||hasItem(tool)||RS.houseTools.includes(tool);
+/* 自備且配戴中的精緻器具，開瓶時客人看得出來 */
+function elegantTool(){
+  const eq=S.equip||[];
+  const own=S.inv.filter(i=>ITEM[i.id]&&ITEM[i.id].elegant);
+  const worn=own.filter(i=>eq.includes(i.id));
+  const list=worn.length?worn:own;
+  if(!list.length) return null;
+  const best=list.sort((a,b)=>ITEM[b.id].elegant-ITEM[a.id].elegant)[0];
+  return {id:best.id,n:ITEM[best.id].n,bonus:ITEM[best.id].elegant,worn:eq.includes(best.id)};
+}
 
 /* ══════════ 服務鏈（前段） ══════════ */
 function serveTable(t){
@@ -2946,7 +2995,9 @@ function serveTable(t){
     if(window.__DEBUG) window.__slots=slots;
     let i=0;
     const draw=()=>{
-      if(i>=slots.length){ res.story=clamp(Math.round(res.story),0,F.w.story); return step4(); }
+      if(i>=slots.length){ res.story=clamp(Math.round(res.story),0,F.w.story);
+        if(res.main.cat==='無酒精') return stepSoft();     // 推薦無酒精飲品，沒有侍酒流程可走
+        return step4(); }
       const s=slots[i], opts=shuffle([{t:s.good,ok:true},{t:s.bad[0]},{t:s.bad[1]}]); let answered=false;
       body().innerHTML=head(2,'餐酒搭配敘事　'+s.k)+
         '<p class="small muted">選出這一段最適合對顧客說出口的說法。</p>'+
@@ -2964,10 +3015,36 @@ function serveTable(t){
     draw();
   }
 
+  /* 4-A 無酒精飲品：沒有侍酒流程，改確認供應方式 */
+  function stepSoft(){
+    const d=res.main;
+    const opts=shuffle([
+      {a:'先把'+d.name+'冰鎮到適口溫度，連杯具一起送上，並說明這桌如果之後想配酒隨時可以再點。',s:10},
+      {a:'直接從冰箱拿一瓶放在桌上就好。',s:2},
+      {a:'還是勸客人改點酒，不然沒有服務獎金。',s:0}]);
+    let done=false;
+    body().innerHTML=head(3,'無酒精飲品的桌邊服務')+
+      '<p class="small muted">這一桌點的是'+d.name+'，沒有展示酒標、開瓶與試酒的流程。'+
+      '不過飲料的溫度、杯具與後續照顧仍然算服務分。</p>'+
+      opts.map((o,k)=>'<button class="opt" data-k="'+k+'">'+o.a+'</button>').join('')+
+      '<p class="small muted" id="softWhy"></p>';
+    $$('.opt',body()).forEach(b=>b.onclick=()=>{
+      if(done) return; done=true;
+      const o=opts[+b.dataset.k];
+      b.classList.add(o.s>=8?'correct':o.s>=2?'picked':'wrong'); Sfx.play(o.s>=8?'correct':'wrong');
+      $$('.opt',body()).forEach(x=>x.classList.add('used'));
+      res.service=Math.round(F.w.service*0.6*(o.s/10));
+      if(o.s<8) res.notes.push('無酒精飲品一樣要顧到溫度與杯具。');
+      $('#softWhy',body()).textContent='無酒精飲品沒有侍酒流程，但桌邊照顧與後續續杯仍然列入評分。';
+      setTimeout(step5,1600);
+    });
+  }
+
   /* 4 侍酒流程（前段） */
   function step4(){
     const d=res.main, tool=needTool(d), steps=F.steps, front=F.w.service*0.6;
     let idx=0, wrong=0;
+    const fine=elegantTool();
     const stage='<div class="stage3d">'+
       '<div class="bottle" id="btl"><div class="neck"></div><div class="body"></div>'+
       '<div class="label" id="lbl">'+d.name+'<br><span style="font-size:8px">'+d.cat+' · '+d.abv+'%<br>'+d.temp+'</span></div></div>'+
@@ -2976,7 +3053,8 @@ function serveTable(t){
     const render=()=>{
       body().innerHTML=head(3,'專業侍酒流程（前段）')+
         '<p class="small muted">依正確順序點擊，順序錯會扣分。'+
-        (tool&&!canOpen(tool)?'<span class="err">身上沒有'+ITEM[tool].n+'，先到左側廚房出菜口拿店內的侍者刀。</span>':'')+'</p>'+stage+
+        (fine?'<span class="okmsg">配戴中：'+fine.n+'，開瓶時會拿出來用。</span>'
+             :'<span class="muted">目前用桌上的萬用開瓶器，販賣部的專業侍酒刀可以提升觀感。</span>')+'</p>'+stage+
         '<div id="acts" style="margin-top:12px">'+shuffle(steps).map(s=>'<button class="opt" data-s="'+s+'" style="display:inline-block;width:auto;margin:4px">'+s+'</button>').join('')+'</div>'+
         '<p class="small" id="svMsg"></p>'+
         (tutorial?'<p class="small muted">學姊：'+steps.join(' → ')+'。</p>':'');
@@ -2990,12 +3068,25 @@ function serveTable(t){
       '介紹酒品':()=>{ $('#btl',body()).classList.add('spin'); Sfx.play('flip');
         $('#svMsg',body()).textContent='「這支是'+d.name+'，'+d.flavor+'。」'; speak('這支是'+d.name); },
       '確認酒款':()=>{ $('#btl',body()).classList.remove('spin'); $('#btl',body()).classList.add('fly'); Sfx.play('coin'); },
-      '開瓶':()=>{ if(tool&&!canOpen(tool)){ wrong+=1; $('#svMsg',body()).textContent='沒有'+ITEM[tool].n+'，開瓶失敗。先到左側廚房出菜口拿店內的侍者刀。'; Sfx.play('wrong'); return; }
+      '開瓶':()=>{
         Sfx.play('pop'); const b=$('#btl',body()); b.classList.remove('fly'); b.style.transform='translateY(-14px)';
-        $('#svMsg',body()).textContent = d.cat==='啤酒'
-          ? '以桌上的開瓶器撬開瓶蓋，手勢俐落、沒有濺出泡沫。'
-          : (isWine(d)?'割開錫箔、螺旋鑽正，軟木塞完整取出，沒有碎屑。'
-                      :'開瓶俐落，瓶口擦拭乾淨後再上桌。'); },
+        let msg;
+        if(fine){
+          wrong-=fine.bonus*0.5;                       // 用自己的好器具，流程分加回來
+          res.elegant=(res.elegant||0)+fine.bonus;
+          msg='你從口袋抽出自己的'+fine.n+'，'+(d.cat==='啤酒'
+            ? '一個俐落的手勢撬開瓶蓋，連泡沫都沒濺出來。'
+            : isWine(d) ? '割開錫箔、螺旋鑽正，軟木塞無聲完整取出。'
+            : '俐落地啟封、擦淨瓶口，再轉正酒標遞到客人面前。')+'鄰座的客人看了一眼，點了點頭。';
+          res.notes.push('在客人面前使用自備的'+fine.n+'，觀感加分。');
+        } else {
+          msg = d.cat==='啤酒'
+            ? '拿起桌上那支萬用開瓶器撬開瓶蓋，能用，就是不太好看。'
+            : (isWine(d)?'用桌上的萬用開瓶器慢慢把軟木塞旋出來，塞子出來了，但過程有點卡。'
+                        :'用桌上的萬用開瓶器啟封，瓶口擦拭乾淨後上桌，動作談不上好看。');
+          if(isWine(d)) res.notes.push('用店內的萬用開瓶器開葡萄酒，流程完成但不夠專業。');
+        }
+        $('#svMsg',body()).textContent=msg; },
       '試酒':()=>{ Sfx.play('pour'); const gl=$('#gls',body()), lq=$('#liq',body());
         if(lq) lq.style.height='22%'; if(gl){ gl.classList.add('taste'); setTimeout(()=>gl.classList.remove('taste'),1500); } },
       '正式倒酒':()=>{ Sfx.play('pour'); const bt=$('#btl',body()), lq=$('#liq',body());
@@ -3048,11 +3139,13 @@ function serveTable(t){
   /* 5 事件卡 */
   function step5(){
     const rid=RS.rest.id;
-    const fits=e=>fitsMenu(e.t+e.o.map(x=>x.a).join('')+(e.why||''),rid);
+    const served=res.main;
+    const fits=e=>fitsServed(e,rid,served);
     const own=EVENTS.filter(e=>e.r===rid&&fits(e));
-    const common=EVENTS.filter(e=>!e.r&&fits(e));
+    const common=EVENTS.filter(e=>!e.r&&!e.soft&&fits(e));
     let pool2=(own.length&&Math.random()<0.6)?own:common.concat(own);
-    if(!pool2.length) pool2=common.length?common:EVENTS.filter(e=>!e.r);
+    if(!pool2.length) pool2=EVENTS.filter(e=>fits(e));
+    if(!pool2.length) pool2=EVENTS.filter(e=>e.soft);
     const ev=rnd(pool2), opts=shuffle(ev.o); let done=false;
     body().innerHTML=head(4,'神秘事件')+'<p class="guest-say">'+ev.t+'</p>'+
       opts.map((o,k)=>'<button class="opt" data-k="'+k+'">'+o.a+'</button>').join('')+'<p class="small muted" id="evWhy"></p>';
@@ -3072,7 +3165,7 @@ function serveTable(t){
   function step6(){
     const d=res.main, sale=d.price*res.qty;
     let tip=0, extra='';
-    if(g.selfServe) extra='<p class="err">這桌客人自己到冰櫃取酒，這筆不列入回扣。</p>';
+    if(g.selfServe) extra='<p class="err">這桌客人自己到冰櫃取酒，這筆沒有服務獎金。</p>';
     else { tip=Math.round(sale*0.15*(1+charm()/100)*(early?1.1:1));
       if(early) extra='<p class="okmsg">在出菜倒數結束前就到桌邊，積極介紹獎勵金 +10%。</p>'; }
     S.cash+=tip; RS.tips+=tip; if(tip) Sfx.play('coin');
@@ -3088,7 +3181,7 @@ function serveTable(t){
       '<p>你完成了前段侍酒流程，'+res.qty+' 支'+d.name+'已經開在桌上。</p>'+
       '<div class="panel" style="margin:10px 0">'+
       '<div class="score-line"><span>目前累計</span><b>'+(res.interview+res.choice+res.logic+res.story+res.service+res.crisis)+' 分</b></div>'+
-      '<div class="score-line"><span>本桌回扣</span><b>'+money(tip)+'</b></div></div>'+extra+
+      '<div class="score-line"><span>本桌獎金</span><b>'+money(tip)+'</b></div></div>'+extra+
       '<p class="small muted">接下來可以去顧其他桌。'+(RS.flow.bottleOnly
         ?'這裡的客人自己斟酒，桌上的瓶子快見底時回來續瓶；'
         :'客人的酒杯變少時回來補酒，酒瓶見底要再開一瓶；')+
@@ -3117,7 +3210,7 @@ function refillMenu(t){
     (bottleOnly?'<p class="small muted">這裡的客人自己斟酒，你要盯的是桌上的瓶子見底沒有。</p>':'');
   const m=modal(head+
     (bottleOnly?'':'<button class="opt" id="rfPour"'+(cur?'':' disabled')+'>幫客人把酒杯斟滿（第一視角倒酒）</button>')+
-    '<button class="opt" id="rfNew">'+(bottleOnly?'再送一瓶 ':'再開一瓶 ')+(d?d.name:'')+'（'+money(d?d.price:0)+'，回扣 15%）</button>'+
+    '<button class="opt" id="rfNew">'+(bottleOnly?'再送一瓶 ':'再開一瓶 ')+(d?d.name:'')+'（'+money(d?d.price:0)+'，獎金 15%）</button>'+
     '<button class="opt" id="rfTea">送上熱茶與清水，先緩一下</button>'+
     '<button class="opt" id="rfClose">請客人確認是否結帳收尾</button>'+
     '<hr class="rule"><button class="btn" id="rfBack">先不處理</button>',{dismiss:false});
@@ -3152,7 +3245,7 @@ function refillMenu(t){
     const tip=Math.round(d.price*0.15*(1+charm()/100));
     S.cash+=tip; RS.tips+=tip; Sfx.play('coin');
     res.refill=Math.min(RS.flow.w.service*0.2,(res.refill||0)+(timely?0.8:0.4));
-    toast((bottleOnly?'送上新的一瓶，回扣 ':'加開一瓶，回扣 ')+money(tip),'good'); updHUD(); done();
+    toast((bottleOnly?'送上新的一瓶，獎金 ':'加開一瓶，獎金 ')+money(tip),'good'); updHUD(); done();
   };
   $('#rfTea').onclick=()=>{
     t.drunk=Math.max(0,t.drunk-28); t.warned=false;
