@@ -163,6 +163,9 @@ a{color:var(--gold);text-underline-offset:3px}
 .step-chip.ok{border-color:var(--ok);color:var(--ok)}
 .opt{display:block;width:100%;text-align:left;margin:7px 0;padding:11px 13px;border-radius:10px;
   background:rgba(255,255,255,.035);border:1px solid var(--line);transition:border-color .15s,background .15s}
+.drink-opt{display:flex;align-items:center;gap:12px}
+.drink-thumb{width:46px;height:96px;object-fit:contain;flex:none;filter:drop-shadow(0 4px 8px rgba(0,0,0,.5))}
+.drink-copy{min-width:0}
 .opt:hover{border-color:var(--gold);background:rgba(255,255,255,.07)}
 .opt.picked{border-color:var(--wine-lite);background:rgba(184,55,92,.16)}
 .opt.correct{border-color:var(--ok);background:rgba(95,164,111,.16)}
@@ -177,7 +180,7 @@ a{color:var(--gold);text-underline-offset:3px}
 .badge{display:inline-block;padding:5px 12px;border:1px solid var(--gold);border-radius:999px;margin:4px 6px 0 0;font-size:12.5px}
 
 /* ─── 3D 酒瓶 / 翻牌 ─── */
-.stage3d{perspective:900px;display:flex;justify-content:center;align-items:flex-end;gap:26px;min-height:220px;margin:10px 0 4px}
+.stage3d{perspective:900px;display:flex;justify-content:center;align-items:flex-end;gap:26px;min-height:268px;margin:10px 0 4px}
 .bottle{width:66px;height:190px;position:relative;transform-style:preserve-3d;transition:transform .9s cubic-bezier(.3,.8,.3,1)}
 .bottle.spin{animation:spinY 3.4s linear infinite}
 @keyframes spinY{to{transform:rotateY(360deg)}}
@@ -326,6 +329,17 @@ b.weak{color:#ff6f5e}
 @media (max-width:640px){ .map-tools{right:8px;top:8px;flex-direction:column} .mt{width:42px;height:42px;font-size:18px} .mt.wide{width:42px;padding:0;font-size:12px} }
 .world-frame canvas{display:block;width:100%;height:auto;image-rendering:pixelated;touch-action:none;cursor:grab}
 .world-frame canvas:active{cursor:grabbing}
+
+
+/* ─── 真實酒瓶／酒標圖（放進 assets/bottles、assets/labels 就會自動生效） ─── */
+.btl-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
+  filter:drop-shadow(0 6px 10px rgba(0,0,0,.5));pointer-events:none}
+.bottle.has-img{width:124px;height:258px}
+.bottle.has-img .neck,.bottle.has-img .body,.bottle.has-img .label{display:none}
+.flip-back{position:relative;overflow:hidden}
+.lb-img{position:absolute;inset:4px;width:calc(100% - 8px);height:calc(100% - 8px);object-fit:contain}
+.flip-back.has-img .lb-txt{position:absolute;left:0;right:0;bottom:3px;font-size:10px;
+  background:rgba(250,246,238,.88);padding:2px 4px;line-height:1.25}
 
 @media (max-width:860px){
   .home-wrap{grid-template-columns:1fr;gap:26px;padding:30px 18px}
@@ -2549,7 +2563,8 @@ function drawTableStatus(ctx,t,tb,i){
     for(let k=0;k<Math.min(opened,8);k++){
       const bx=t.x-((Math.min(opened,8)-1)*11)/2+k*11, by=top+34;
       const isNow=(k===Math.min(opened,8)-1)&&now;
-      ctx.fillStyle='#20402f'; ctx.fillRect(bx-3,by,7,18); ctx.fillRect(bx-1,by-5,3,6);
+      const tint=(tb.res&&tb.res.main&&BOTTLE_TINT[tb.res.main.id])||'#20402f';
+      ctx.fillStyle=tint; ctx.fillRect(bx-3,by,7,18); ctx.fillRect(bx-1,by-5,3,6);
       const lv=isNow?now.level:0;
       ctx.fillStyle=lv>0?'#b8375c':'rgba(255,255,255,.10)';
       ctx.fillRect(bx-2,by+18-Math.max(0,Math.round(16*lv)),5,Math.max(0,Math.round(16*lv)));
@@ -2595,7 +2610,26 @@ const ATTR={
   champagne:{body:1,acid:3,tan:0,sweet:0}, xo:{body:3,acid:1,tan:1,sweet:2}, vodka:{body:2,acid:1,tan:0,sweet:0},
   gin:{body:2,acid:1,tan:0,sweet:0}, cocktail:{body:2,acid:2,tan:0,sweet:2}, tequila:{body:3,acid:1,tan:0,sweet:0},
 };
+const BOTTLE_TINT={
+  gaoliang:'#f6f3ee', beer:'#e4b15c', beerBottle:'#6a4124', shaoxing:'#5c4334',
+  whisky:'#c47a34', redHouse:'#1b3429', plum:'#e2b25c', oolong:'#d39b46',
+  oolongHot:'#6b4b38', barley:'#4e3224', orange:'#ef8a24', guava:'#d5e2a6',
+  sake:'#e5f1e8', daiginjo:'#f3f4f6', shochu:'#3c2b22', sauvignon:'#c6deb6',
+  chardonnay:'#d4e2aa', riesling:'#2d4b35', pinot:'#1e3d2d', merlot:'#163428',
+  cabernet:'#11281e', champagne:'#1a3427', xo:'#c17b34', vodka:'#e6eef2',
+  gin:'#c6e0cd', cocktail:'#f2c6bb', tequila:'#f3e6c0'
+};
 const isWine=d=>['葡萄酒','氣泡酒'].includes(d.cat);
+/* 真實瓶身／酒標圖：放在 assets/bottles/<id>.png 與 assets/labels/<id>.png，
+   找不到檔案就自動退回程式畫的瓶子，不會出錯 */
+const bottleImg=id=>'<img class="btl-img" alt="" decoding="async" src="assets/bottles/'+id+'.png" '+
+  'onload="this.parentNode.classList.add(\'has-img\')" onerror="this.remove()">';
+const USE_LABEL_IMG=false;   // 另外做了酒標特寫放進 assets/labels/ 之後，把這行改成 true
+const labelImg=id=>USE_LABEL_IMG
+  ? '<img class="lb-img" alt="" decoding="async" src="assets/labels/'+id+'.png" '+
+    'onload="this.parentNode.classList.add(\'has-img\')" onerror="this.src=\'assets/bottles/'+id+'.png\';this.onerror=function(){this.remove()}">'
+  : '<img class="lb-img" alt="" decoding="async" src="assets/bottles/'+id+'.png" '+
+    'onload="this.parentNode.classList.add(\'has-img\')" onerror="this.remove()">';
 const isSpirit=d=>d.abv>20;
 const needTool=d=>isWine(d)?'corkscrew':(d.cat==='啤酒'?'opener':null);
 /* 每人喝到幾杯，酒意就會滿（100%） */
@@ -2710,8 +2744,18 @@ function enterRestaurant(id){
   startShift(id,lv);
 }
 
+const BOTTLE_CACHE={};
+/* 進店時先把這間店會用到的酒瓶圖讀進瀏覽器快取 */
+function preloadBottles(restId){
+  const list=(REST[restId]||{}).drinks||[];
+  list.forEach(did=>{
+    if(BOTTLE_CACHE[did]) return;
+    const im=new Image(); im.decoding='async'; im.src='assets/bottles/'+did+'.png';
+    BOTTLE_CACHE[did]=im;
+  });
+}
 function startShift(id,lv){
-  World.stop();
+  World.stop(); preloadBottles(id);
   const r=REST[id];
   RS={rest:r,lv,flow:flowOf(id),tables:[],served:0,scores:[],tips:0,spawned:0,
       startMin:S.minutes,ended:false,inService:false,
@@ -2876,7 +2920,7 @@ function tableInfo(t){
   const g=t.g;
   modal('<h3>第 '+(t.i+1)+' 桌　'+g.occ.n+'　'+g.size+' 位</h3>'+
     '<p class="small">點餐：'+g.dishes.map(d=>d.n).join('、')+'</p>'+
-    (t.res?'<p class="small">已推薦：'+t.res.main.name+' × '+t.res.qty+'</p>':'')+
+    (t.res?'<div style="display:flex;gap:12px;align-items:center;margin:8px 0"><img alt="" src="assets/bottles/'+t.res.main.id+'.png" style="width:52px;height:112px;object-fit:contain;filter:drop-shadow(0 4px 8px rgba(0,0,0,.45))" onerror="this.remove()"><p class="small" style="margin:0">已推薦：'+t.res.main.name+' × '+t.res.qty+'</p></div>':'')+
     (t.glasses&&t.glasses.length?'<p class="small">各杯酒量：'+t.glasses.map(x=>Math.round(x.level*100)+'%').join('、')+
       '　已喝：'+t.glasses.map(x=>(x.drank||0).toFixed(1)+' 杯').join('、')+
       '（'+(isFinite(t.glassesToFull)?('每人 '+t.glassesToFull+' 杯就會醉'):'無酒精')+'）</p>':'')+
@@ -2958,7 +3002,7 @@ function serveTable(t){
   /* 2 酒款推薦 */
   function step2(){
     const list=r.drinks.map(id=>DRINKS[id]);
-    const opt=(d,w)=>'<button class="opt" data-'+w+'="'+d.id+'"><b>'+d.name+'</b> <span class="muted small">'+d.cat+'　'+d.abv+'%　'+money(d.price)+'　'+d.temp+'</span><br><span class="small">'+d.flavor+'｜'+d.structure+'</span></button>';
+    const opt=(d,w)=>'<button class="opt drink-opt" data-'+w+'="'+d.id+'"><img class="drink-thumb" alt="" loading="lazy" decoding="async" src="assets/bottles/'+d.id+'.png" onerror="this.remove()"><span class="drink-copy"><b>'+d.name+'</b> <span class="muted small">'+d.cat+'　'+d.abv+'%　'+money(d.price)+'　'+d.temp+'</span><br><span class="small">'+d.flavor+'｜'+d.structure+'</span></span></button>';
     body().innerHTML=head(1,'判斷與酒款推薦')+dishLine+
       '<p class="small muted">已取得情報：'+(Object.values(g.known).join(' ')||'（沒問到，只能用猜的）')+'</p>'+
       '<h4>選擇推薦的酒款</h4>'+shuffle(list).map(d=>opt(d,'main')).join('')+
@@ -3059,7 +3103,7 @@ function serveTable(t){
     let idx=0, wrong=0;
     const fine=elegantTool();
     const stage='<div class="stage3d">'+
-      '<div class="bottle" id="btl"><div class="neck"></div><div class="body"></div>'+
+      '<div class="bottle" id="btl">'+bottleImg(d.id)+'<div class="neck"></div><div class="body"></div>'+
       '<div class="label" id="lbl">'+d.name+'<br><span style="font-size:8px">'+d.cat+' · '+d.abv+'%<br>'+d.temp+'</span></div></div>'+
       '<div class="glass" id="gls"><div class="bowl"><div class="liquid" id="liq"></div></div><div class="stem"></div><div class="foot"></div></div>'+
       '</div><div class="confirm-zone" id="cz">確認區</div>';
@@ -3075,7 +3119,8 @@ function serveTable(t){
     };
     const anim={
       '展示酒標':()=>{ const c=document.createElement('div'); c.className='flip-card';
-        c.innerHTML='<div class="flip-inner"><div class="flip-face flip-front">酒標</div><div class="flip-face flip-back">'+d.name+'<br><span style="font-size:10px">'+d.temp+'</span></div></div>';
+        c.innerHTML='<div class="flip-inner"><div class="flip-face flip-front">酒標</div>'+
+          '<div class="flip-face flip-back">'+labelImg(d.id)+'<span class="lb-txt">'+d.name+'<br><span style="font-size:10px">'+d.cat+' · '+d.abv+'% · '+d.temp+'</span></span></div></div>';
         $('#cz',body()).innerHTML=''; $('#cz',body()).appendChild(c); setTimeout(()=>c.classList.add('flipped'),60);
         $('#btl',body()).classList.add('spin'); Sfx.play('flip'); },
       '介紹酒品':()=>{ $('#btl',body()).classList.add('spin'); Sfx.play('flip');
@@ -3183,7 +3228,7 @@ function serveTable(t){
       if(early) extra='<p class="okmsg">在出菜倒數結束前就到桌邊，積極介紹獎勵金 +10%。</p>'; }
     S.cash+=tip; RS.tips+=tip; if(tip) Sfx.play('coin');
     t.res=res;
-    t.bottles=Array.from({length:res.qty},()=>({level:1,name:d.name,abv:d.abv}));
+    t.bottles=Array.from({length:res.qty},()=>({level:1,name:d.name,abv:d.abv,id:d.id}));
     const drinkers=(t.party||[]).filter(p=>p.drinks);
     t.glasses=drinkers.map(p=>({p,level:1,rate:p.rate||1,drank:1}));
     if(!t.glasses.length) t.glasses=[{p:null,level:1,rate:1,drank:1}];
@@ -3254,7 +3299,7 @@ function refillMenu(t){
     (t.bottles||[]).forEach(b=>{ b.level=0; });
     t.bottles=(t.bottles||[]).slice(-2);          // 桌面只留最近的空瓶當紀錄
     t.opened=(t.opened||t.bottles.length)+1;
-    t.bottles.push({level:1,name:d.name,abv:d.abv});
+    t.bottles.push({level:1,name:d.name,abv:d.abv,id:d.id});
     if(bottleOnly){ (t.glasses||[]).forEach(x=>{ if(x.level<0.6) x.level=1; }); }
     else (t.glasses||[]).forEach(x=>x.level=1);
     t.glass=(t.glasses||[]).reduce((a,x)=>a+x.level,0)/Math.max(1,(t.glasses||[]).length);
