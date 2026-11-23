@@ -389,9 +389,9 @@ b.weak{color:#ff6f5e}
           <label class="field" style="margin:2px 0 8px"><span style="margin:0"><input type="checkbox" id="liSavePw"> 記住密碼（只存在這台裝置，共用電腦請勿勾選）</span></label>
           <p class="err" id="liErr"></p>
           <button class="btn primary" id="btnLogin" style="width:100%">進入侍酒村</button>
-          <div style="display:flex;justify-content:space-between;margin-top:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+            <span class="muted small">第一次玩請先「註冊帳號」，收信完成驗證後再登入。</span>
             <button class="btn ghost sm" id="btnForgot">忘記密碼</button>
-            <button class="btn ghost sm" id="btnDemo">試玩帳號</button>
           </div>
         </div>
 
@@ -700,15 +700,102 @@ const PERSONAS=[
   teach:'整合多人需求，提供主選＋替代方案，並說明飲用順序。'},
 ];
 
+/* ── 法式以外的顧客角色卡：講的是自家店在賣的酒 ───────────── */
+const PERSONAS_REST={
+ hotfry:[
+  {id:'beerGang',n:'啤酒派同事',line:'我們先來幾瓶啤酒吧，熱炒配啤酒最對味。',
+   traits:{style:'要冰、要快'},
+   hidden:{style:'喜歡冰涼順口、氣泡明顯',tannin:'不喜歡太嗆的酒',acid:'無所謂',budget:800,special:'有人等一下要開車'},
+   teach:'節奏快的店，先確認人數與冰度，再決定一次送幾瓶。'},
+  {id:'gaoliangBro',n:'高粱大哥',line:'今天高興，開一瓶高粱！',
+   traits:{style:'想乾杯'},
+   hidden:{style:'喜歡夠勁但要順喉',tannin:'怕太嗆，喜歡入口後回甘',acid:'無所謂',budget:1500,special:'桌上有人酒量不好，不想被硬勸'},
+   teach:'烈酒要主動配溫開水與小杯，並留意席間有沒有人撐不住。'},
+  {id:'shaoxingOld',n:'老客人',line:'老樣子，來一瓶紹興配薑絲大腸。',
+   traits:{style:'習慣固定'},
+   hidden:{style:'喜歡溫潤帶米香',tannin:'不喜歡太刺激',acid:'可接受',budget:900,special:'天冷想溫著喝'},
+   teach:'熟客要記得習慣，並主動提供溫飲、話梅這類選擇。'},
+  {id:'noDrinkHot',n:'不喝酒的同事',line:'我不喝酒，有沒有解膩一點的？',
+   traits:{style:'不喝酒'},
+   hidden:{style:'喜歡解膩、不要太甜',tannin:'不適用',acid:'喜歡清爽',budget:300,special:'等一下要開車'},
+   teach:'不勸酒，無酒精也要講得出搭配理由。'},
+ ],
+ canton:[
+  {id:'host',n:'宴席主人',line:'今天長輩做東，酒要拿得出手，但不要太誇張。',
+   traits:{style:'講面子'},
+   hidden:{style:'喜歡圓潤有厚度、不要太嗆',tannin:'不喜歡太刺激',acid:'可接受',budget:3000,special:'最多兩瓶，不希望推最貴的'},
+   teach:'宴席要兼顧面子與實用，提供主選＋替代方案。'},
+  {id:'elderToast',n:'要敬酒的長輩',line:'等一下要敬一輪，挑支大家都喝得慣的。',
+   traits:{style:'重視席間禮儀'},
+   hidden:{style:'喜歡順口、不嗆喉',tannin:'怕太烈',acid:'可接受',budget:2000,special:'敬酒順序要照輩分'},
+   teach:'敬酒場合先問輩分與順序，酒精度別太高。'},
+  {id:'familyCanton',n:'帶小孩的家庭',line:'有小孩跟長輩，先來點不含酒精的吧。',
+   traits:{style:'照顧全桌'},
+   hidden:{style:'喜歡清爽解膩',tannin:'不適用',acid:'喜歡溫潤',budget:600,special:'長輩不喝冰的'},
+   teach:'一桌不同需求時，熱飲與冷飲要分開準備。'},
+  {id:'foodie',n:'懂吃的老饕',line:'燒味拼盤跟避風塘炒蟹，你覺得配什麼好？',
+   traits:{style:'想聽理由'},
+   hidden:{style:'喜歡香氣明顯、尾韻乾淨',tannin:'可接受中等',acid:'喜歡有酸度平衡油脂',budget:2500,special:'想聽到為什麼，而不是規則'},
+   teach:'用料理的油脂與醬汁切入搭配邏輯，不要背公式。'},
+ ],
+ japan:[
+  {id:'sakeNew',n:'清酒初心者',line:'我沒喝過清酒，你幫我挑就好。',
+   traits:{style:'第一次喝'},
+   hidden:{style:'喜歡柔順帶果香、不要太衝',tannin:'不喜歡酒精感太重',acid:'可接受',budget:1200,special:'第一次喝，怕點錯'},
+   teach:'少用專有名詞，把純米、吟釀翻成生活化的說法。'},
+  {id:'ginjoFan',n:'吟釀愛好者',line:'有沒有香氣明顯一點的吟釀？',
+   traits:{style:'懂一點'},
+   hidden:{style:'喜歡華麗果香、乾淨尾韻',tannin:'不喜歡厚重',acid:'喜歡清亮',budget:2600,special:'希望冷飲，杯子要乾淨'},
+   teach:'吟釀系要冷飲，溫度與杯型都會影響香氣。'},
+  {id:'salaryman',n:'下班的上班族',line:'先來杯生啤，待會再看看。',
+   traits:{style:'想放鬆'},
+   hidden:{style:'喜歡冰涼、氣泡明顯',tannin:'不喜歡太苦',acid:'無所謂',budget:700,special:'明天還要上班，不想喝多'},
+   teach:'先給一杯、再談後續，不要一次推整瓶。'},
+  {id:'noDrinkJp',n:'開車來的客人',line:'我開車，想要清爽一點的飲料。',
+   traits:{style:'不喝酒'},
+   hidden:{style:'喜歡清爽不甜',tannin:'不適用',acid:'喜歡乾淨',budget:300,special:'等一下要開車'},
+   teach:'主動提供無酒精選擇，不要讓客人自己開口拒絕。'},
+ ],
+};
+function personaFor(rid){
+  const list=PERSONAS_REST[rid];
+  return rnd(list&&list.length?list:PERSONAS);
+}
+
 /* ── 訪談問題池 ───────────────────────────────────────────── */
-const QUESTIONS=[
+const QUESTIONS=[          /* 四間店共用的好問題 */
  {q:'今天是什麼樣的場合呢？',key:'occasion',good:true},
  {q:'餐點已經點好了嗎？方便讓我看一下今天的菜色嗎？',key:'dishes',good:true},
- {q:'平常比較常喝紅酒、白酒，還是氣泡酒？',key:'style',good:true},
- {q:'喜歡清爽帶果香的，還是濃郁一點的風格？',key:'style2',good:true},
- {q:'會不會不喜歡明顯的澀感，或是太尖銳的酸度？',key:'tannin',good:true},
  {q:'如果方便的話，我可以依照您希望的價格區間推薦兩到三款選擇。',key:'budget',good:true},
  {q:'今天這一桌有沒有不喝酒，或需要特別避開的成員？',key:'special',good:true},
+];
+/* 各店專屬的風格問題：問的是自家店在賣的東西 */
+const QUESTIONS_REST={
+ french:[
+  {q:'平常比較常喝紅酒、白酒，還是氣泡酒？',key:'style',good:true},
+  {q:'喜歡清爽帶果香的，還是濃郁一點的風格？',key:'style2',good:true},
+  {q:'會不會不喜歡明顯的澀感，或是太尖銳的酸度？',key:'tannin',good:true},
+ ],
+ hotfry:[
+  {q:'今天想喝冰冰涼涼的，還是比較有勁道的？',key:'style',good:true},
+  {q:'是配著菜慢慢喝，還是要大口乾杯的那一種？',key:'style2',good:true},
+  {q:'會不會不喜歡太嗆、太辣喉嚨的口感？',key:'tannin',good:true},
+  {q:'需要先上冰桶跟幾個杯子嗎？人多的話我一次備齊。',key:'special',good:true},
+ ],
+ canton:[
+  {q:'今天想喝順口好入口的，還是香氣濃一點的？',key:'style',good:true},
+  {q:'席間會不會敬酒？我可以挑一支大家都喝得慣的。',key:'style2',good:true},
+  {q:'桌上有沒有長輩不喜歡太烈、太嗆的？',key:'tannin',good:true},
+  {q:'需要幫您準備熱飲嗎？長輩通常不太喝冰的。',key:'special',good:true},
+ ],
+ japan:[
+  {q:'今天想配生魚片清爽一點的，還是搭壽喜燒厚實一點的？',key:'style',good:true},
+  {q:'清酒想喝冰的，還是溫一點的？',key:'style2',good:true},
+  {q:'酒精感希望淡一點嗎？還是喜歡紮實一點的口感？',key:'tannin',good:true},
+ ],
+};
+/* 不理想的問法：每一輪只會混進兩題 */
+const QUESTIONS_BAD=[
  {q:'您想喝什麼？',key:null,good:false,why:'問得太籠統，顧客無從回答，拿不到情報 Token。'},
  {q:'您應該喜歡{wine}吧？',swap:true,key:null,good:false,why:'先入為主替顧客決定，屬於猜測而非訪談。',penalty:true},
  {q:'請問您預算多少錢？',key:'budget',good:false,why:'直接問金額不符價格詢問禮儀，可改成「價格區間」的說法。',penalty:true},
@@ -717,18 +804,18 @@ const QUESTIONS=[
 
 /* ── 神秘事件卡 ───────────────────────────────────────────── */
 const EVENTS=[
- {t:'顧客喝了一口說：「這個酒好像太酸了。」',
+ {k:['wine'],t:'顧客喝了一口說：「這個酒好像太酸了。」',
   o:[{a:'先確認是酒的問題還是溫度：「我先幫您確認一下酒溫，這款冰得比較低時酸度會更明顯。」',s:10},
      {a:'「這款本來就是這個酸度。」',s:0},
      {a:'直接換一瓶更貴的給客人。',s:3}],
   why:'酸度感受常受酒溫影響，先確認再解釋，最後才提供方案。'},
- {t:'開瓶時軟木塞斷成兩截。',
+ {k:['wine'],t:'開瓶時軟木塞斷成兩截。',
   o:[{a:'向客人致意後撤到旁邊，改用侍者刀螺旋重新取出，必要時過濾碎屑並換一瓶。',s:10},
      {a:'把塞子推進瓶內，直接倒給客人。',s:0},
      {a:'請客人自己處理。',s:0}],
   why:'開瓶失誤要在客人面前保持從容，處理程序比藏起來重要。'},
- {t:'客人臨時追加一道辣炒海瓜子。',
-  o:[{a:'說明辣度會放大酒精與單寧的灼熱感，建議加點一杯低酒精、帶果香或微甜的酒款。',s:10},
+ {k:['wine','sake','brew','fruit','spirit','beer'],t:'客人臨時追加一道辣炒海瓜子。',
+  o:[{a:'說明辣度會放大酒精的灼熱感（紅酒還會加上單寧），建議加點一杯低酒精、帶果香或微甜的飲品。',s:10},
      {a:'「沒關係，這瓶配什麼都可以。」',s:2},
      {a:'請客人把辣的菜取消。',s:0}],
   why:'高酒精＋高單寧＋辣＝灼熱感加強，這是必須說明的搭配邏輯。'},
@@ -737,7 +824,7 @@ const EVENTS=[
      {a:'「這已經是最便宜的了。」',s:1},
      {a:'堅持這瓶最適合，請客人試試看。',s:0}],
   why:'預算是需求的一部分，要回到訪談重新確認再推薦。'},
- {t:'客人說：「我不喝紅酒。」但整桌都是牛排。',
+ {k:['wine'],t:'客人說：「我不喝紅酒。」但整桌都是牛排。',
   o:[{a:'提出結構較厚的白酒或氣泡酒，說明為什麼仍能搭配紅肉。',s:10},
      {a:'「牛排一定要配紅酒。」',s:0},
      {a:'推薦烈酒讓客人配著喝。',s:3}],
@@ -747,7 +834,7 @@ const EVENTS=[
      {a:'照原來順序倒完。',s:2},
      {a:'請客人自己傳酒瓶。',s:0}],
   why:'服務順序是評分項目：主客／長輩優先、順時針、主人最後。'},
- {t:'客人聞到酒有濕紙板與地下室的霉味。',
+ {k:['wine'],t:'客人聞到酒有濕紙板與地下室的霉味。',
   o:[{a:'確認是軟木塞污染（TCA），立即致歉更換同款新瓶。',s:10},
      {a:'「這是陳年風味。」',s:0},
      {a:'請客人多醒一下就會好。',s:2}],
@@ -762,12 +849,12 @@ const EVENTS=[
      {a:'繼續倒酒，客人開心最重要。',s:0},
      {a:'直接請客人離開。',s:2}],
   why:'避免過量供酒是侍酒師的責任，也能避免後續的衝突與受傷。'},
- {t:'客人問：「Brut 是不是很甜？」',
+ {k:['wine'],t:'客人問：「Brut 是不是很甜？」',
   o:[{a:'說明 Brut 屬於不甜的等級，甜度標示由 Brut Nature 往 Doux 遞增。',s:10},
      {a:'「氣泡酒都偏甜。」',s:0},
      {a:'「差不多啦，喝起來很順口。」',s:2}],
   why:'氣泡酒甜度標示是基本知識，要正確澄清而不是含混帶過。'},
- {t:'客人問：「Chardonnay 是不是都很甜？」',
+ {k:['wine'],t:'客人問：「Chardonnay 是不是都很甜？」',
   o:[{a:'說明果香濃郁不等於甜，多數 Chardonnay 是不甜的，甜感來自成熟果味與桶陳。',s:10},
      {a:'「對，都偏甜。」',s:0},
      {a:'「看你喝哪一支。」',s:3}],
@@ -777,12 +864,12 @@ const EVENTS=[
      {a:'立刻開最貴的那瓶。',s:2},
      {a:'「好，那我幫您開兩瓶。」',s:0}],
   why:'成交不是目的，適配才是；同時避免過量供酒。'},
- {t:'酒送到桌上時明顯太溫，客人皺眉。',
+ {k:['wine','sake','beer','fruit'],t:'酒送到桌上時明顯太溫，客人皺眉。',
   o:[{a:'致歉後以冰桶降溫，並說明這款的建議飲用溫度區間。',s:10},
      {a:'加冰塊進酒杯。',s:1},
      {a:'請客人先喝，等一下就好了。',s:2}],
   why:'酒溫是侍酒流程的一部分，冰桶處理並說明溫度區間才是專業做法。'},
- {t:'客人說：「我朋友說牛肉就是要 Cabernet Sauvignon。」但他不喜歡澀。',
+ {k:['wine'],t:'客人說：「我朋友說牛肉就是要 Cabernet Sauvignon。」但他不喜歡澀。',
   o:[{a:'先肯定這是經典搭配，再說明單寧感受差異，建議 Merlot 作為更柔順的選擇。',s:10},
      {a:'「你朋友說錯了。」',s:0},
      {a:'照客人朋友說的開 Cabernet。',s:3}],
@@ -878,6 +965,81 @@ const EVENTS_SOFT=[
   why:'無酒精選擇一樣要講得出風味與搭配邏輯。'},
 ];
 EVENTS_SOFT.forEach(e=>EVENTS.push(e));
+
+/* ── 啤酒／烈酒／紹興／清酒／梅酒的客訴與應變（法式以外的主力） ── */
+const EVENTS_KIND=[
+ {k:['beer'],t:'客人說：「這杯啤酒怎麼都沒有泡沫？」',
+  o:[{a:'換一只乾淨冰杯，先斜杯倒七分、最後立起來沖出綿密泡沫，說明泡沫能鎖住香氣。',s:10},
+     {a:'「瓶裝的本來就這樣。」',s:0},
+     {a:'拿湯匙在杯子裡攪一攪讓它起泡。',s:2}],
+  why:'啤酒的泡沫層會擋住氧化與氣泡逸散，倒法與杯子乾不乾淨決定泡沫。'},
+ {k:['beer'],t:'客人喝到一半說：「啤酒變溫了，不好喝。」',
+  o:[{a:'建議改用小杯分次倒，並把整瓶放回冰桶，剩下的隨時幫他補上。',s:10},
+     {a:'直接加冰塊進啤酒裡。',s:2},
+     {a:'「台灣天氣就是這樣。」',s:0}],
+  why:'啤酒升溫會變苦、氣泡也跑掉；小杯分次＋冰桶比加冰塊稀釋好。'},
+ {k:['beer'],t:'這桌一直喊：「再來一手啤酒，快一點！」隔壁桌也在叫你。',
+  o:[{a:'先回應「兩分鐘內送到」，把整手啤酒與冰桶一次送齊，再去隔壁桌。',s:10},
+     {a:'一瓶一瓶慢慢送，跑好幾趟。',s:3},
+     {a:'先去隔壁桌，不回應這桌。',s:0}],
+  why:'熱炒店講求節奏：先給承諾再一次備齊，比來回跑更快也更穩。'},
+ {k:['spirit'],t:'客人皺眉說：「這高粱太嗆了，喝不下去。」',
+  o:[{a:'建議改用小杯慢飲、搭一口熱菜，或兌一點冰水降到順口的濃度，並附上溫開水。',s:10},
+     {a:'「58 度本來就這樣，忍一下。」',s:0},
+     {a:'直接換成啤酒，不說明原因。',s:3}],
+  why:'高酒精要靠降溫、稀釋與配菜來緩衝，不是叫客人硬喝。'},
+ {k:['spirit'],t:'席間一直互相敬酒，有位客人已經明顯撐不住。',
+  o:[{a:'默默幫他換上溫開水或熱茶，再向主人輕聲提議放慢節奏，不當眾點名。',s:10},
+     {a:'跟著起鬨要他乾杯。',s:0},
+     {a:'大聲說「這位先生不能再喝了」。',s:2}],
+  why:'不勸酒、給台階，是餐飲服務的基本責任，也避免後面的衝突。'},
+ {k:['spirit'],t:'客人問：「威士忌加冰塊會不會變難喝？」',
+  o:[{a:'說明加冰會降溫、略為稀釋，香氣收斂但更順口，可以先純飲一口再加冰比較。',s:10},
+     {a:'「加冰就毀了，不要加。」',s:2},
+     {a:'「隨便啦，都一樣。」',s:0}],
+  why:'給選擇與比較方式，比替客人決定更專業。'},
+ {k:['spirit','brew'],t:'客人說：「這瓶跟我平常喝的味道不一樣，是不是假酒？」',
+  o:[{a:'請他稍等，當桌確認封口與標籤完整，說明批次與保存溫度都會影響風味，必要時換一瓶。',s:10},
+     {a:'「不可能啦，我們都正貨。」',s:1},
+     {a:'直接退錢請客人別喝了。',s:3}],
+  why:'先處理疑慮再解釋差異，當桌驗封口是最有效的安心作法。'},
+ {k:['brew'],t:'客人問：「紹興要不要加話梅？」',
+  o:[{a:'說明加話梅會蓋掉米香與回甘，建議先試原味，喜歡甜一點再加。',s:10},
+     {a:'二話不說丟兩顆話梅下去。',s:3},
+     {a:'「加話梅是外行人才做的事。」',s:0}],
+  why:'尊重習慣但先給專業建議，順序是「先原味、再調整」。'},
+ {k:['brew'],t:'客人說：「紹興可以溫一下嗎？天氣有點冷。」',
+  o:[{a:'以溫水浴加熱到 40–45°C 左右，說明溫過香氣會更開，但太燙會把酒精味逼出來。',s:10},
+     {a:'直接拿去微波爐加熱。',s:0},
+     {a:'「紹興不能溫。」',s:1}],
+  why:'溫飲是紹興的傳統喝法，重點在控溫與加熱方式。'},
+ {k:['sake'],t:'客人問：「這瓶大吟釀要不要溫過比較好喝？」',
+  o:[{a:'說明大吟釀的果香與吟釀香在 8–10°C 最清楚，溫過反而會失去香氣，建議冷飲。',s:10},
+     {a:'「清酒都要溫啊。」',s:0},
+     {a:'「看你喜歡。」就走開。',s:2}],
+  why:'純米酒適合溫飲、吟釀系適合冷飲，分得清楚才叫專業。'},
+ {k:['sake'],t:'客人說：「清酒聞起來有米味，是不是壞掉了？」',
+  o:[{a:'說明米香本來就是純米酒的特徵，並當場確認酒溫與開瓶時間，請他再試一口比較。',s:10},
+     {a:'「清酒都這個味道。」',s:2},
+     {a:'立刻換成啤酒。',s:3}],
+  why:'先同理、再用「正常風味」與「劣化風味」的差別解釋，最後才是替代方案。'},
+ {k:['sake'],t:'客人問：「這瓶開了喝不完怎麼辦？」',
+  o:[{a:'說明可以冷藏保存兩三天、風味會慢慢變化，也可以先點半瓶或小瓶裝。',s:10},
+     {a:'「喝不完就浪費啊。」',s:0},
+     {a:'建議直接乾掉。',s:1}],
+  why:'給保存建議與更小的份量選擇，才是替客人著想。'},
+ {k:['fruit'],t:'客人說：「梅子酒太甜了，喝兩杯就膩。」',
+  o:[{a:'建議加冰或兌蘇打水拉開甜度，也可以換成清爽一點的喝法搭鹹味菜。',s:10},
+     {a:'「梅酒本來就是甜的。」',s:1},
+     {a:'直接換一瓶更貴的。',s:2}],
+  why:'甜度可以用稀釋、溫度與搭配來調整，不必整瓶換掉。'},
+ {k:['beer','spirit','brew','sake','fruit'],t:'客人問：「這瓶幾度？等一下還要開車。」',
+  o:[{a:'明確說出酒精度，並建議改喝無酒精飲品，提醒代駕或計程車的選項。',s:10},
+     {a:'「喝一點點沒關係啦。」',s:0},
+     {a:'「我不知道耶。」',s:1}],
+  why:'酒駕零容忍；說得出酒精度並主動提供替代方案是基本功。'},
+];
+EVENTS_KIND.forEach(e=>EVENTS.push(e));
 
 /* ── 侍酒流程正確順序 ─────────────────────────────────────── */
 const SERVICE_STEPS=['展示酒標','確認酒款','開瓶','試酒','正式倒酒','依服務順序','補酒','收尾'];
@@ -1443,7 +1605,7 @@ $('#btnLogin').onclick=async()=>{
     const n=Object.keys(DB.users).length;
     return err.textContent = n===0
       ? '這台裝置上沒有任何帳號資料。如果你是直接開啟本機檔案，瀏覽器會擋掉儲存，請改用老師提供的線上網址。'
-      : '查不到這個 E-mail 的帳號，請確認拼字，或改用「試玩帳號」。';
+      : '查不到這個 E-mail 的帳號，請確認拼字；還沒有帳號請先點上方的「註冊帳號」。';
   }
   if(u.pw!==hash(pw)){ f.n++; if(f.n>=3){ f.until=Date.now()+180000; f.n=0; } loginFail[em]=f;
     return err.textContent='密碼不正確（連續錯 3 次會暫停輸入 3 分鐘）。'; }
@@ -1469,16 +1631,9 @@ $('#btnForgot').onclick=async()=>{
       :'<p class="err">請先在上方填入已註冊的 E-mail。</p>'));
   const b=$('#doReset'); if(b) b.onclick=async()=>{ u.pw=hash(u.code); await persist(); closeModals(); toast('密碼已重設','good'); };
 };
-$('#btnDemo').onclick=async()=>{
-  clearFade(); closeModals(); loginFail={};
-  const em='guest@local';
-  if(!DB.users[em]) DB.users[em]={acc:'G0000000000試玩玩家',email:em,bd:'',pw:'',verified:true,code:'',guest:true,
-    created:Date.now(),save:newSave(em,'G0000000000試玩玩家')};
-  DB.users[em].guest=true;
-  DB.session={email:em,auto:false}; await persist();
-  toast('試玩模式：進度只留在這台裝置，不會上傳成績。');
-  enterGame(DB.users[em]);
-};
+/* 試玩帳號已停用：一律註冊並完成 E-mail 驗證後才能上線 */
+if($('#btnDemo')) $('#btnDemo').remove();
+
 $('#btnLogout').onclick=async()=>{ await saveGame(); stopClock(); S=null;
   DB.session.auto=false; await persist();
   if(typeof Cloud!=='undefined'&&Cloud.on) await cloudLogout();
@@ -2718,6 +2873,21 @@ const FLOW={
 const flowOf=id=>FLOW[id]||FLOW.french;
 
 /* 文字中出現的酒款關鍵字 → 這間店有沒有賣 */
+/* 這桌實際喝的是哪一類，事件卡與話術都要跟著換 */
+function drinkKind(d){
+  if(!d) return 'none';
+  switch(d.cat){
+    case '無酒精': return 'soft';
+    case '葡萄酒': case '氣泡酒': return 'wine';
+    case '啤酒':   return 'beer';
+    case '清酒':   return 'sake';
+    case '釀造酒': return 'brew';     // 紹興、花雕
+    case '果實酒': return 'fruit';    // 梅子酒
+    default:       return 'spirit';   // 高粱、威士忌、燒酎、干邑、調酒
+  }
+}
+const KIND_NAME={wine:'葡萄酒',beer:'啤酒',sake:'清酒',brew:'紹興酒',fruit:'果實酒',spirit:'烈酒',soft:'無酒精飲品'};
+
 const WINE_WORDS=[
  {w:'Cabernet Sauvignon',ids:['cabernet']},{w:'Pinot Noir',ids:['pinot']},{w:'Merlot',ids:['merlot']},
  {w:'Chardonnay',ids:['chardonnay']},{w:'Sauvignon Blanc',ids:['sauvignon']},{w:'Riesling',ids:['riesling']},
@@ -2739,14 +2909,20 @@ function fitsMenu(text,restId){
 function fitsServed(ev,restId,served){
   const text=(typeof ev==='string')?ev:(ev.t+ev.o.map(x=>x.a).join('')+(ev.why||''));
   const isSoftCard=(typeof ev!=='string')&&!!ev.soft;
-  if(served&&served.cat==='無酒精') return isSoftCard;   // 無酒精桌只抽無酒精事件卡
+  const kind=drinkKind(served);
+  if(kind==='soft') return isSoftCard;                   // 無酒精桌只抽無酒精事件卡
   if(isSoftCard) return false;                           // 有酒的桌不抽無酒精事件卡
+  // 事件卡標了適用酒種，就必須對得上這桌實際喝的那一類
+  const k=(typeof ev!=='string')&&ev.k;
+  if(k&&served&&!k.includes(kind)) return false;
   if(!fitsMenu(text,restId)) return false;
   if(!served) return true;
-  if(/軟木塞|酒塞|TCA|錫箔/.test(text) && !isWine(served)) return false;
+  if(/軟木塞|酒塞|TCA|錫箔|單寧|醒酒/.test(text) && kind!=='wine') return false;
+  if(/酸度|太酸/.test(text) && !['wine','sake'].includes(kind)) return false;
   // 文字點名了某款酒，就必須是這桌點的那一款
   return WINE_WORDS.every(x=>!text.includes(x.w)||x.ids.includes(served.id));
 }
+
 /* 把題目裡的酒名換成本店實際有賣的一支 */
 function localizeQ(q,restId){
   if(!q.swap) return q;
@@ -2902,7 +3078,7 @@ function restTick(){
   if(past) endShift();
 }
 function seatGuests(t,occ){
-  const r=RS.rest, per=rnd(PERSONAS);
+  const r=RS.rest, per=personaFor(r.id);
   const nDish=clamp(Math.round(occ.size/1.6),2,5);
   const dishes=shuffle(r.menu).slice(0,nDish);
   const budget=Math.round(per.hidden.budget*(occ.size<=2?1:occ.size<=4?1.6:2.6));
@@ -3030,9 +3206,11 @@ function serveTable(t){
   /* 1 需求訪談 */
   function step1(){
     const rid=r.id;
-    const usable=QUESTIONS.filter(q=>q.swap||fitsMenu(q.q,rid)).map(q=>localizeQ(q,rid));
-    const pool=shuffle(usable).slice(0,F.q<=2?6:8);
-    if(!pool.some(q=>q.good)) pool[0]=localizeQ(QUESTIONS[0],rid);
+    const goodAll=QUESTIONS.concat(QUESTIONS_REST[rid]||QUESTIONS_REST.french)
+      .filter(q=>fitsMenu(q.q,rid));
+    const bad=shuffle(QUESTIONS_BAD.filter(q=>q.swap||fitsMenu(q.q,rid))).slice(0,2).map(q=>localizeQ(q,rid));
+    const pool=shuffle(shuffle(goodAll).slice(0,F.q<=2?4:5).concat(bad));
+    if(!pool.some(q=>q.good)) pool[0]=QUESTIONS[0];
     body().innerHTML=head(0,'迎賓與需求訪談')+
       '<p class="guest-say">'+g.per.n+'：「'+g.per.line+'」</p>'+
       '<p class="small muted">顧客有 3 顆情報 Token。'+(F.q<=2?'這裡節奏快，最多問 2 個問題。':'最多問 '+F.q+' 個問題。')+'問法正確才拿得到情報。</p>'+
