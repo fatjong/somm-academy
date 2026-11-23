@@ -1190,6 +1190,39 @@ async function cloudSaveGame(){
   if(!Cloud.on||!Cloud.uid||!S) return;
   try{ await Cloud.db.collection('users').doc(Cloud.uid)
     .set({acc:S.acc,email:S.email,save:S,updated:Date.now()},{merge:true}); }catch(e){}
+  cloudSaveRoster();
+}
+/* 玩家總表：每次存檔同步一份「可讓教師讀取」的摘要到 roster/{uid} */
+async function cloudSaveRoster(){
+  if(!Cloud.on||!Cloud.uid||!S) return;
+  if(DB.users[S.email]&&DB.users[S.email].guest) return;          // 試玩帳號不上傳
+  try{ await Cloud.db.collection('roster').doc(Cloud.uid)
+    .set(Object.assign(rosterSummary(S,DB.users[S.email]),{uid:Cloud.uid,updated:Date.now()}),{merge:true}); }catch(e){}
+}
+/* 教師端沒有玩家帳號也要能讀雲端總表 → 用匿名登入取得 request.auth */
+async function cloudTeacherAuth(){
+  if(!Cloud.on||!Cloud.auth) return false;
+  if(Cloud.auth.currentUser) return true;
+  try{ await Cloud.auth.signInAnonymously(); Cloud.anon=true; return true; }
+  catch(e){ Cloud.authErr=fbMsg(e); return false; }
+}
+async function cloudFetchRoster(){
+  if(!Cloud.on) return null;
+  try{ const snap=await Cloud.db.collection('roster').orderBy('updated','desc').limit(500).get();
+    return snap.docs.map(d=>Object.assign({},d.data(),{uid:d.id}));
+  }catch(e){ try{ const snap=await Cloud.db.collection('roster').limit(500).get();
+      return snap.docs.map(d=>Object.assign({},d.data(),{uid:d.id})); }catch(e2){ return null; } }
+}
+/* 刪除一位玩家的雲端紀錄：總表摘要、存檔、以及所有上班成績 */
+async function cloudDeletePlayer(uid){
+  if(!Cloud.on||!uid) return '未連線雲端';
+  let err='';
+  try{ await Cloud.db.collection('roster').doc(uid).delete(); }catch(e){ err=fbMsg(e); }
+  try{ await Cloud.db.collection('users').doc(uid).delete(); }catch(e){ if(!err) err=fbMsg(e); }
+  try{ const sn=await Cloud.db.collection('scores').where('uid','==',uid).limit(400).get();
+    if(sn.size){ const b=Cloud.db.batch(); sn.docs.forEach(d=>b.delete(d.ref)); await b.commit(); }
+  }catch(e){ if(!err) err=fbMsg(e); }
+  return err;
 }
 async function cloudScore(rec){
   if(!Cloud.on||!Cloud.uid) return;
@@ -1341,7 +1374,7 @@ function newSave(email,acc){ return {
   email,acc,exp:0,cash:2000,bank:0,stamina:100,
   day:1,weekday:1,minutes:10*60,avatar:null,prog:{french:1,hotfry:1,canton:1,japan:1},               // 星期一 10:00
   level:1,cleared:[],badges:[],inv:[{id:'phone'},{id:'card'}],
-  history:[],scoreLog:[],studied:0,mute:false,sfx:true,equip:[],study:{},atDoor:null,zoomPref:{},hurtDays:0,lastPay:0,
+  history:[],scoreLog:[],servedTotal:0,lastSeen:Date.now(),studied:0,mute:false,sfx:true,equip:[],study:{},atDoor:null,zoomPref:{},hurtDays:0,lastPay:0,
 };}
 
 $('#tabLogin').onclick=()=>{ $('#tabLogin').classList.add('on'); $('#tabReg').classList.remove('on');
@@ -1453,6 +1486,7 @@ $('#btnLogout').onclick=async()=>{ await saveGame(); stopClock(); S=null;
 
 async function saveGame(){
   if(!S) return;
+  S.lastSeen=Date.now();
   const u=DB.users[S.email]; if(u){ u.save=S; }
   await persist();
   if(Cloud.on&&Cloud.uid) cloudSaveGame();
@@ -1462,6 +1496,10 @@ function enterGame(u){
   if(!DB.users[u.email]) DB.users[u.email]=u; else DB.users[u.email].save=u.save||DB.users[u.email].save;
   S=u.save||newSave(u.email,u.acc); S.email=u.email; S.acc=u.acc;
   if(!S.avatar) S.avatar=null;
+  // 舊存檔補上累計服務桌數，並立刻同步一次（教師總表才看得到剛登入的玩家）
+  if(S.servedTotal==null) S.servedTotal=(S.scoreLog||[]).reduce((a,r)=>a+(+r.served||0),0);
+  S.lastSeen=Date.now();
+  try{ saveGame(); }catch(e){}
   const hasProgress = S.avatar && (S.day>1||S.level>1||S.exp>0||S.history.length>0);
   if(hasProgress && typeof resumeChoice==='function'){
     try{ resumeChoice(u); return; }catch(e){ console.error(e); }
@@ -1574,6 +1612,30 @@ function levelFor(id){ const sub=progOf(id);
   return LEVELS.find(l=>l.rest===id&&l.sub===sub)||LEVELS[0]; }
 function totalCleared(){ return OPEN_ORDER.reduce((a,id)=>a+(progOf(id)-1)+(restCleared(id)?1:0),0); }
 function syncLevel(){ S.level=clamp(totalCleared()+1,1,20); return S.level; }
+/* ── 玩家摘要：教師總表與 CSV 都用這一份計算 ───────────────── */
+function progOfSave(sv,id){
+  if(!sv) return 1;
+  const p=sv.prog||{}; let n=+p[id]||0;
+  if(!n) n = (id===OPEN_ORDER[0] ? (+sv.level||1) : 1);           // 舊存檔只有線性 level
+  return clamp(n,1,5);
+}
+const svCleared=(sv,id)=>!!(((sv&&sv.cleared)||[]).includes('done:'+id));
+const progCell=(sv,id)=>svCleared(sv,id)?'5/5 ✔':progOfSave(sv,id)+'/5';
+function rosterSummary(sv,u){
+  sv=sv||{}; const log=sv.scoreLog||[];
+  const served=(+sv.servedTotal||0)||log.reduce((a,r)=>a+(+r.served||0),0);
+  const avg=log.length?+(log.reduce((a,r)=>a+(+r.avg||0),0)/log.length).toFixed(1):0;
+  return {
+    acc:sv.acc||(u&&u.acc)||'(未命名)', email:sv.email||(u&&u.email)||'',
+    french:progCell(sv,'french'), hotfry:progCell(sv,'hotfry'),
+    canton:progCell(sv,'canton'), japan:progCell(sv,'japan'),
+    cleared:OPEN_ORDER.reduce((a,id)=>a+(progOfSave(sv,id)-1)+(svCleared(sv,id)?1:0),0),
+    day:+sv.day||1, cash:Math.round(+sv.cash||0), bank:Math.round(+sv.bank||0), exp:+sv.exp||0,
+    shifts:log.length, served, avg, passed:log.filter(r=>r.pass).length,
+    guest:!!(u&&u.guest), verified:u?!!u.verified:true,
+    lastSeen:+sv.lastSeen||(u&&+u.created)||0
+  };
+}
 function progressText(){ return OPEN_ORDER.map(id=>REST[id].name+' '+(restCleared(id)?'5/5 ✔':progOf(id)+'/5')).join('　'); }
 /* 村莊箭頭指向：現在營業中、而且還沒全破的那一間；都沒營業就指進度最前面的 */
 function currentRest(){
@@ -2787,7 +2849,8 @@ function endShift(){
   const rec={acc:S.acc,email:S.email,level:lv.no,rest:RS.rest.name,tables:RS.served,avg:+avg.toFixed(1),pass,day:S.day,ts:Date.now()};
   DB.scores.push(rec);
   if(typeof Cloud!=='undefined'&&Cloud.on&&!(DB.users[S.email]&&DB.users[S.email].guest)) cloudScore(rec);
-  S.scoreLog.push({level:lv.no,avg:+avg.toFixed(1),served:RS.served,pass});
+  S.scoreLog.push({level:lv.no,avg:+avg.toFixed(1),served:RS.served,pass,rest:RS.rest.name,sub:lv.sub,day:S.day,ts:Date.now()});
+  S.servedTotal=(+S.servedTotal||0)+RS.served;   // 累計服務桌數（教師後台用）
   S.history.push('第'+S.day+'天：'+RS.rest.name+'第'+lv.sub+'關，服務 '+RS.served+' 桌，平均 '+avg.toFixed(1)+' 分'+(pass?'（通過）':'（未達標）'));
   if(pass){
     progAll();
@@ -3414,29 +3477,70 @@ $('#btnTeacher').onclick=()=>{
   if(!locked){ $('#tgo',m).onclick=go; $('#tpw',m).addEventListener('keydown',e=>{if(e.key==='Enter')go();}); }
 };
 
-let tTab='scores';
-function openTeacher(){ show('teacher'); drawTeacher(); }
+/* 危險操作（刪除紀錄）前再次確認教師密碼 */
+function confirmTeacher(msg){
+  return new Promise(res=>{
+    const m=modal('<h3>需要教師密碼</h3><p class="small">'+msg+'</p>'+
+      '<label class="field"><span>教師密碼</span><input id="cfpw" type="password" autocomplete="off"></label>'+
+      '<p class="err" id="cferr"></p>'+
+      '<div class="row" style="display:flex;gap:8px;justify-content:flex-end">'+
+      '<button class="btn sm" id="cfno">取消</button>'+
+      '<button class="btn sm" id="cfok" style="border-color:#b3443c;color:#ffb4ac">確認刪除</button></div>',{dismiss:false});
+    let n=0; const done=v=>{ m.remove(); res(v); };
+    $('#cfno',m).onclick=()=>done(false);
+    const go=()=>{
+      if(pwHash($('#cfpw',m).value)===DB.config.teacherHash) return done(true);
+      n++; $('#cferr',m).textContent='密碼不正確（連續錯 3 次會關閉後台 3 分鐘）。';
+      if(n>=3){ teacherLockUntil=Date.now()+180000; done(false);
+        toast('教師密碼連續錯誤，後台暫停 3 分鐘','bad'); show(S?'village':'home'); }
+    };
+    $('#cfok',m).onclick=go;
+    $('#cfpw',m).addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
+    setTimeout(()=>{ const i=$('#cfpw',m); if(i) i.focus(); },40);
+  });
+}
+function csvDownload(name,head,rows){
+  const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const csv=head.map(q).join(',')+'\n'+rows.map(r=>r.map(q).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));
+  a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),0);
+}
+
+let tTab='roster';
+function openTeacher(){ show('teacher'); drawTeacher(); if(Cloud.on&&!Cloud.uid) cloudTeacherAuth().then(ok=>{ if(ok) drawTeacher(); }); }
 function drawTeacher(){
-  const tabs=[['scores','學生成績'],['levels','關卡設定'],['bank','事件題庫'],['users','帳號管理'],['cfg','⚙️ 設定與 Firebase 對接']];
+  const tabs=[['roster','玩家總表'],['scores','上班成績'],['levels','關卡設定'],['bank','事件題庫'],['cfg','⚙️ 設定與 Firebase 對接']];
   $('#teacherBody').innerHTML='<div class="view-head"><h2>教師後台</h2><span class="muted small">餐酒侍酒師養成 RPG　管理介面</span>'+
     '<div style="flex:1"></div><button class="btn sm" id="tOut">離開後台</button></div>'+
     '<div class="t-tabs">'+tabs.map(t=>'<button class="btn sm '+(tTab===t[0]?'gold':'')+'" data-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'+
     '<div class="panel" id="tBody"></div>';
   $('#tOut').onclick=()=>show(S?'village':'home');
   $$('[data-tab]').forEach(b=>b.onclick=()=>{ tTab=b.dataset.tab; drawTeacher(); });
-  ({scores:tScores,levels:tLevels,bank:tBank,users:tUsers,cfg:tCfg}[tTab])();
+  ({roster:tRoster,scores:tScores,levels:tLevels,bank:tBank,cfg:tCfg}[tTab]||tRoster)();
 }
 async function tScores(){
-  let rows=DB.scores.slice().reverse(), src='本機';
-  if(Cloud.on){ const cl=await cloudFetchScores(); if(cl){ rows=cl; src='雲端 Firestore'; } }
-  $('#tBody').innerHTML='<div class="list-row"><span class="muted small">資料來源：'+src+'　共 '+rows.length+' 筆上班紀錄</span>'+
-    '<div><button class="btn sm" id="csv">匯出 CSV</button> <button class="btn sm" id="clr">清空紀錄</button></div></div>'+
-    '<div class="inv-scroll"><table class="data"><tr><th>玩家帳號</th><th>關卡</th><th>餐廳</th><th>桌數</th><th>平均分</th><th>結果</th><th>遊戲天數</th></tr>'+
-    (rows.length?rows.map(r=>'<tr><td>'+r.acc+'</td><td>'+r.level+'</td><td>'+r.rest+'</td><td>'+r.tables+'</td><td>'+r.avg+'</td><td>'+(r.pass?'通過':'未達標')+'</td><td>'+r.day+'</td></tr>').join('')
-     :'<tr><td colspan="7" class="muted">還沒有學生上過班。</td></tr>')+'</table></div>';
-  $('#csv').onclick=()=>{ const csv='帳號,關卡,餐廳,桌數,平均分,結果,天數\n'+rows.map(r=>[r.acc,r.level,r.rest,r.tables,r.avg,r.pass?'通過':'未達標',r.day].join(',')).join('\n');
-    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'})); a.download='侍酒師成績.csv'; a.click(); };
-  $('#clr').onclick=async()=>{ if(confirm('確定清空所有成績紀錄？')){ DB.scores=[]; await persist(); drawTeacher(); } };
+  let rows=DB.scores.slice().reverse(), src='本機 localStorage';
+  if(Cloud.on){ const cl=await cloudFetchScores(); if(cl){ rows=cl; src='雲端 Firestore（scores）'; } }
+  const dt=t=>t?new Date(+t).toLocaleString('zh-TW'):'';
+  $('#tBody').innerHTML='<div class="list-row"><span class="muted small">資料來源：'+src+'　共 '+rows.length+' 筆上班紀錄（每位玩家每次上班一筆）</span>'+
+    '<div><button class="btn sm" id="rfr2">重新整理</button> <button class="btn sm gold" id="csv">下載 CSV 表單</button> '+
+    '<button class="btn sm" id="clr" style="border-color:#b3443c;color:#ffb4ac">清空紀錄</button></div></div>'+
+    '<div class="inv-scroll"><table class="data"><tr><th>玩家帳號</th><th>E-mail</th><th>關卡</th><th>餐廳</th><th>服務桌數</th><th>平均分</th><th>結果</th><th>遊戲天數</th><th>時間</th></tr>'+
+    (rows.length?rows.map(r=>'<tr><td>'+r.acc+'</td><td class="small">'+(r.email||'')+'</td><td>'+r.level+'</td><td>'+r.rest+'</td><td>'+r.tables+'</td><td>'+r.avg+'</td><td>'+(r.pass?'通過':'未達標')+'</td><td>第 '+r.day+' 天</td><td class="small">'+dt(r.ts)+'</td></tr>').join('')
+     :'<tr><td colspan="9" class="muted">還沒有學生上過班。</td></tr>')+'</table></div>';
+  $('#rfr2').onclick=()=>drawTeacher();
+  $('#csv').onclick=()=>csvDownload('侍酒師上班成績.csv',
+    ['玩家帳號','E-mail','關卡','餐廳','服務桌數','平均分','結果','遊戲天數','時間'],
+    rows.map(r=>[r.acc,r.email||'',r.level,r.rest,r.tables,r.avg,r.pass?'通過':'未達標','第 '+r.day+' 天',dt(r.ts)]));
+  $('#clr').onclick=async()=>{
+    if(!await confirmTeacher('將清空全部上班成績紀錄（玩家的進度存檔會保留），無法復原。')) return;
+    DB.scores=[]; await persist();
+    if(Cloud.on){ try{ const sn=await Cloud.db.collection('scores').limit(450).get();
+        if(sn.size){ const b=Cloud.db.batch(); sn.docs.forEach(d=>b.delete(d.ref)); await b.commit(); }
+      }catch(e){ toast('雲端清空失敗：'+fbMsg(e),'bad'); } }
+    toast('成績紀錄已清空','good'); drawTeacher();
+  };
 }
 function tLevels(){
   $('#tBody').innerHTML='<div class="grid2"><div>'+
@@ -3466,16 +3570,79 @@ function tBank(){
     EVENTS.push(ev); DB.config.customEvents=[...(DB.config.customEvents||[]),ev]; await persist(); toast('事件卡已加入','good'); drawTeacher();
   };
 }
-function tUsers(){
-  const us=Object.values(DB.users);
-  $('#tBody').innerHTML='<p class="small muted">同一組 E-mail 僅能開通一個玩家帳號。多瀏覽器同時掛機的上限由 '+DB.config.maxSameAccount+' 個連線控制（需搭配 Firebase 線上狀態）。</p>'+
-   '<div class="inv-scroll"><table class="data"><tr><th>玩家帳號</th><th>E-mail</th><th>驗證</th><th>目前關卡</th><th>經驗</th><th>操作</th></tr>'+
-   (us.length?us.map(u=>'<tr><td>'+u.acc+'</td><td>'+u.email+'</td><td>'+(u.verified?'已驗證':'未驗證')+'</td><td>'+(u.save?u.save.level:1)+'</td><td>'+(u.save?u.save.exp:0)+'</td>'+
-     '<td><button class="btn sm" data-vf="'+u.email+'">強制驗證</button> <button class="btn sm" data-rs="'+u.email+'">重設進度</button></td></tr>').join('')
-    :'<tr><td colspan="6" class="muted">尚無註冊玩家。</td></tr>')+'</table></div>';
-  $$('[data-vf]').forEach(b=>b.onclick=async()=>{ DB.users[b.dataset.vf].verified=true; await persist(); drawTeacher(); });
-  $$('[data-rs]').forEach(b=>b.onclick=async()=>{ if(!confirm('重設這位玩家的遊戲進度？')) return;
-    const u=DB.users[b.dataset.rs]; u.save=newSave(u.email,u.acc); await persist(); drawTeacher(); });
+async function tRoster(){
+  const liveEmail = S ? S.email : '';
+  let rows=null, src='本機 localStorage', cl=null;
+  if(Cloud.on){ cl=await cloudFetchRoster(); if(cl&&cl.length){ rows=cl; src='雲端 Firestore（roster）'; } }
+  if(!rows){
+    rows=Object.values(DB.users).map(u=>Object.assign(rosterSummary(u.save,u),{uid:'',email:u.email}));
+    if(Cloud.on) src = cl
+      ? '雲端已連線，但總表還沒有資料（學生存檔後才會出現）；以下為本機紀錄'
+      : '雲端讀不到總表，改顯示本機紀錄。請在 Firebase → Authentication 啟用「匿名」登入，或先用任一玩家帳號登入後再進後台。'+(Cloud.authErr?'（'+Cloud.authErr+'）':'');
+  }
+  // 目前正在這台裝置上玩的玩家，用現況覆蓋，數字才會是最新的
+  if(S){ const mine=Object.assign(rosterSummary(S,DB.users[S.email]),{uid:(Cloud.uid||'')});
+    const k=rows.findIndex(r=>(r.email||'')===liveEmail);
+    if(k>=0) rows[k]=Object.assign({},rows[k],mine); else rows.push(mine); }
+  rows.sort((a,b)=>(b.cleared-a.cleared)||(b.exp-a.exp)||String(a.acc).localeCompare(String(b.acc)));
+
+  const dt=t=>{ if(!t) return '—'; const d=new Date(+t);
+    return (d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+
+  $('#tBody').innerHTML=
+   '<div class="list-row"><span class="muted small">資料來源：'+src+'　共 '+rows.length+' 位玩家　'+
+     '<br>玩家登入後會自動把進度抓回雲端繼續玩；下方數字是每位玩家最後一次存檔的狀態。</span>'+
+     '<div><button class="btn sm" id="rfr">重新整理</button> <button class="btn sm gold" id="rcsv">下載 CSV 表單</button></div></div>'+
+   '<div class="inv-scroll"><table class="data" style="white-space:nowrap">'+
+   '<tr><th>玩家帳號</th><th>E-mail</th><th>法式西餐廳</th><th>熱炒店</th><th>粵菜館</th><th>日式料理</th>'+
+   '<th>遊戲天數</th><th>現金／存款</th><th>經驗值</th><th>上班次數</th><th>服務桌數</th><th>平均分</th><th>最後上線</th><th>操作</th></tr>'+
+   (rows.length?rows.map((r,i)=>'<tr>'+
+     '<td>'+r.acc+(r.guest?' <span class="muted small">(試玩)</span>':'')+(r.verified?'':' <span class="small" style="color:#ffb4ac">未驗證</span>')+'</td>'+
+     '<td class="small">'+(r.email||'—')+'</td>'+
+     '<td>'+r.french+'</td><td>'+r.hotfry+'</td><td>'+r.canton+'</td><td>'+r.japan+'</td>'+
+     '<td>第 '+r.day+' 天</td>'+
+     '<td>'+money(r.cash)+' ／ '+money(r.bank)+'</td>'+
+     '<td>'+r.exp+'</td><td>'+r.shifts+'</td><td>'+r.served+'</td><td>'+(r.avg||0)+'</td>'+
+     '<td class="small">'+dt(r.lastSeen||r.updated)+'</td>'+
+     '<td style="white-space:nowrap">'+
+       (r.verified?'':'<button class="btn sm" data-vf="'+i+'">強制驗證</button> ')+
+       '<button class="btn sm" data-rs="'+i+'">重設進度</button> '+
+       '<button class="btn sm" data-del="'+i+'" style="border-color:#b3443c;color:#ffb4ac">刪除</button></td></tr>').join('')
+    :'<tr><td colspan="14" class="muted">目前還沒有玩家資料。學生註冊並存檔後就會出現在這裡。</td></tr>')+
+   '</table></div>'+
+   '<p class="small muted">「刪除」會一併清掉該玩家的雲端存檔、總表摘要與所有上班成績，必須再輸入一次教師密碼才會執行，且無法復原。</p>';
+
+  $('#rfr').onclick=()=>drawTeacher();
+  $('#rcsv').onclick=()=>csvDownload('侍酒村玩家紀錄.csv',
+    ['玩家帳號','E-mail','法式西餐廳','熱炒店','粵菜館','日式料理','累計過關','遊戲天數','現金','存款','經驗值','上班次數','服務桌數','平均分','通過次數','最後上線'],
+    rows.map(r=>[r.acc,r.email,r.french,r.hotfry,r.canton,r.japan,r.cleared+'/20','第 '+r.day+' 天',
+      r.cash,r.bank,r.exp,r.shifts,r.served,r.avg||0,r.passed||0,
+      (r.lastSeen||r.updated)?new Date(+(r.lastSeen||r.updated)).toLocaleString('zh-TW'):'']));
+
+  $$('[data-vf]').forEach(b=>b.onclick=async()=>{ const r=rows[+b.dataset.vf], u=DB.users[r.email];
+    if(!u) return toast('這筆資料在雲端，請由 Firebase 控制台處理驗證。','bad');
+    u.verified=true; await persist(); toast('已標記為已驗證','good'); drawTeacher(); });
+
+  $$('[data-rs]').forEach(b=>b.onclick=async()=>{ const r=rows[+b.dataset.rs];
+    if(!await confirmTeacher('將「'+r.acc+'」的遊戲進度重設為第 1 天的全新存檔。')) return;
+    const u=DB.users[r.email];
+    if(u){ u.save=newSave(u.email,u.acc); if(S&&S.email===r.email){ S=u.save; } await persist(); }
+    if(Cloud.on&&r.uid){ try{ await Cloud.db.collection('users').doc(r.uid).set({save:newSave(r.email,r.acc),updated:Date.now()},{merge:true});
+      await Cloud.db.collection('roster').doc(r.uid).set(Object.assign(rosterSummary(newSave(r.email,r.acc),null),{uid:r.uid,updated:Date.now()}),{merge:true}); }
+      catch(e){ toast('雲端重設失敗：'+fbMsg(e),'bad'); } }
+    toast('已重設 '+r.acc+' 的進度','good'); drawTeacher(); });
+
+  $$('[data-del]').forEach(b=>b.onclick=async()=>{ const r=rows[+b.dataset.del];
+    if(!await confirmTeacher('將永久刪除「'+r.acc+'」的存檔、總表摘要與全部上班成績，無法復原。')) return;
+    let err='';
+    if(Cloud.on&&r.uid) err=await cloudDeletePlayer(r.uid);
+    if(DB.users[r.email]) delete DB.users[r.email];
+    DB.scores=DB.scores.filter(x=>x.email!==r.email);
+    if(S&&S.email===r.email){ S=null; stopClock(); }
+    await persist();
+    toast(err?('本機已刪除，雲端失敗：'+err):('已刪除 '+r.acc+' 的全部紀錄'),err?'bad':'good');
+    if(!S) return show('home');
+    drawTeacher(); });
 }
 function tCfg(){
   const f=DB.config.firebase, a=DB.config.azureTts;
@@ -3555,6 +3722,7 @@ function tCfg(){
     // 已登入且勾過「記住我」→ 直接接續（Firebase 自己保存了登入狀態）
     Cloud.auth.onAuthStateChanged(async user=>{
       if(!user||S) return;
+      if(user.isAnonymous) return;          // 教師後台的匿名連線
       if(!user.emailVerified){ return; }
       if(!(DB.session&&DB.session.auto)){ $('#liEmail').value=user.email; return; }
       try{ const u=await cloudLoadUser(user); enterGame(u); }catch(e){}
